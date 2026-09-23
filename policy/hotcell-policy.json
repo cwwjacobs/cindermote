@@ -1,0 +1,57 @@
+{
+  "policy_version": "cindermote-hotcell-v1.3",
+  "isolation": {
+    "legacy_code_backend": "linux-namespace",
+    "firecracker": {
+      "required_for": ["browser-probe"],
+      "fallback": "deny",
+      "jailer_required": true,
+      "ram_runtime_required": true,
+      "host_swap_must_be_disabled": true,
+      "rootfs_read_only": true,
+      "guest_writes": "tmpfs-only",
+      "snapshots": "disabled-v1"
+    },
+    "require_network_namespace": true,
+    "require_mount_namespace": true,
+    "require_seccomp": true,
+    "full_root_requires_cgroups": true,
+    "full_root_requires_mlock": true
+  },
+  "budgets": {
+    "wall_clock_sec": 8,
+    "cpu_vcpu": 1,
+    "ram_mib": 256,
+    "pids": 64,
+    "max_output_bytes": 1048576,
+    "max_telemetry_events": 10000
+  },
+  "browser_budgets": {
+    "wall_clock_sec": 20,
+    "cpu_vcpu": 1,
+    "ram_mib": 1024,
+    "max_network_bytes": 16777216,
+    "max_events": 10000,
+    "max_redirects": 8
+  },
+  "artifact_types": [
+    "mcp-server",
+    "tool-definition",
+    "skill-md",
+    "python-script",
+    "shell-script",
+    "browser-probe"
+  ],
+  "capabilities": {
+    "default_grants": [],
+    "network": "deny except browser.navigate: CDP enforces web origins; host proxy enforces plain-HTTP origins or HTTPS CONNECT host:port plus pinned DNS/peer",
+    "filesystem_writes": "RAM overlay only"
+  },
+  "detectors": {
+    "timing_evasion_per_second": 100,
+    "timing_evasion_quarantine_count": 500,
+    "exec_spawn_depth": 3,
+    "dns_payload_bytes": 100,
+    "dns_queries_per_second": 10
+  }
+}

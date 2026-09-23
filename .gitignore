@@ -1,0 +1,54 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Local secrets and machine state
+.env
+.env.*
+!.env.example
+!.env.*.example
+.observer_key
+.tainted_hosts
+.decommissioned_hosts
+gate/override.json
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+token.json
+token.*.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.token
+*.secret
+
+# Generated execution evidence
+alerts/
+quarantine/
+receipts/
+mf-run-*
+cf-run-*
+*.sealed
+scratch/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.pcap
+*.pcapng
+
+# Pinned runtime assets and generated microVM images
+.cindermote/cache/
+.cindermote/runtime/
+.cindermote/
+
+# Generated release packages
+dist/
+

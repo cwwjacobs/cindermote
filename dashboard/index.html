@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cindermote — Scalar Kernel SaaS Control Plane</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Background Glow & Grid -->
+  <div class="bg-grid"></div>
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="top-nav glass-card">
+      <div class="nav-brand">
+        <div class="logo-icon anim-pulse">⌬</div>
+        <div class="brand-text">
+          <h1>CINDERMOTE</h1>
+          <span class="sub-badge">SCALAR KERNEL CONTROL PLANE</span>
+        </div>
+      </div>
+
+      <div class="nav-status">
+        <div class="status-indicator online" id="kernelStatusIndicator">
+          <span class="pulse-dot"></span>
+          <span class="status-label">Kernel: <strong id="kernelStatusText">HOTCELL ACTIVE</strong></span>
+        </div>
+        <div class="policy-chip">
+          <span class="chip-label">Policy:</span>
+          <strong id="currentPolicy">cindermote-strict/v1</strong>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Metrics Grid -->
+    <section class="kpi-grid">
+      <div class="kpi-card glass-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Active Scalar Kernels</span>
+          <span class="unicode-icon anim-spin-slow">⬢</span>
+        </div>
+        <div class="kpi-value" id="kpiActiveKernels">3</div>
+        <div class="kpi-subtext">Isolated in RAM Jail Space</div>
+      </div>
+
+      <div class="kpi-card glass-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Surfaces Discovered</span>
+          <span class="unicode-icon anim-glow">◈</span>
+        </div>
+        <div class="kpi-value" id="kpiSurfacesCount">142</div>
+        <div class="kpi-subtext">Hashes Recorded (Zero Raw Text)</div>
+      </div>
+
+      <div class="kpi-card glass-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Purge Verification Rate</span>
+          <span class="unicode-icon text-emerald anim-shimmer">✓</span>
+        </div>
+        <div class="kpi-value text-emerald" id="kpiPurgeRate">100%</div>
+        <div class="kpi-subtext">Non-Cooperative Host Teardown</div>
+      </div>
+
+      <div class="kpi-card glass-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Collapse Cues Triggered</span>
+          <span class="unicode-icon text-rose anim-flash">⊗</span>
+        </div>
+        <div class="kpi-value text-rose" id="kpiCollapseCount">12</div>
+        <div class="kpi-subtext">Deterministic Policy Breaches</div>
+      </div>
+    </section>
+
+    <!-- Visual 2D Seam Map & Ingress Topology -->
+    <section class="panel-section glass-card">
+      <div class="panel-header">
+        <h2>Visual Seam Topology & Bounded Particle Stream</h2>
+        <span class="panel-badge">CONTENT-BLIND HOST MAP</span>
+      </div>
+
+      <div class="topology-container">
+        <!-- SVG Visual Network Nodes -->
+        <div class="node-grid">
+          <div class="topology-node node-tainted" id="nodeGuest">
+            <span class="node-icon anim-pulse">⬟</span>
+            <div class="node-info">
+              <strong>TAINTED GUEST</strong>
+              <span class="node-sub">RAM Jail / MCP Target</span>
+            </div>
+          </div>
+
+          <div class="topology-edge">
+            <div class="edge-line">
+              <div class="particle particle-flow-right" id="particleSeam1"></div>
+            </div>
+            <span class="edge-label">guest_mcp_event (SHA-256)</span>
+          </div>
+
+          <div class="topology-node node-broker" id="nodeBroker">
+            <span class="node-icon anim-glow">⌬</span>
+            <div class="node-info">
+              <strong>CAPABILITY BROKER</strong>
+              <span class="node-sub">Seam Gatekeeper</span>
+            </div>
+          </div>
+
+          <div class="topology-edge">
+            <div class="edge-line">
+              <div class="particle particle-flow-right" id="particleSeam2"></div>
+            </div>
+            <span class="edge-label">bounded_metadata</span>
+          </div>
+
+          <div class="topology-node node-trusted" id="nodeHost">
+            <span class="node-icon anim-shimmer">✓</span>
+            <div class="node-info">
+              <strong>TRUSTED HOST</strong>
+              <span class="node-sub">Ash Vault & Purge</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sanitization-banner">
+          <span class="banner-icon">🛡️</span>
+          <span><strong>Host Safety Invariant:</strong> Raw MCP prompts, tool descriptions, and model output stay inside <code>[TAINTED GUEST]</code>. Data moving across seams contains SHA-256 hashes and event codes only.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Content Split -->
+    <main class="main-layout">
+      <!-- Target Submitter & Control Panel -->
+      <section class="panel-section glass-card">
+        <div class="panel-header">
+          <h2>Detonate Untrusted MCP Target</h2>
+          <span class="panel-badge">GUEST ISOLATION</span>
+        </div>
+        
+        <form id="detonationForm" class="control-form">
+          <div class="form-group">
+            <label for="targetPackageUri">Target Package URI / Command</label>
+            <input type="text" id="targetPackageUri" placeholder="npm://@untrusted/mcp-server-tools" value="npm://@untrusted/mcp-data-pipeline" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="probeProfile">Probe Profile</label>
+              <select id="probeProfile">
+                <option value="mcp-full-traversal">MCP Full Surface Traversal</option>
+                <option value="stateless-loop-a">Loop A: Stateless Probing</option>
+                <option value="stateful-loop-b">Loop B: Stateful Retention</option>
+                <option value="context-pressure-loop-c">Loop C: Window Pressure</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="providerEndpoint">Provider Relay Endpoint</label>
+              <select id="providerEndpoint">
+                <option value="deepseek-v4-flash">DeepSeek Relay (api.deepseek.com)</option>
+                <option value="openai-gpt4o">OpenAI Relay (api.openai.com)</option>
+                <option value="contained-local-mock">Contained Local Mock</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="btnLaunchDetonation" class="btn btn-primary">
+              <span class="unicode-icon anim-spin-slow">⯈</span> Launch Scalar Detonation
+            </button>
+            <button type="button" id="btnSimulateCollapse" class="btn btn-danger">
+              <span class="unicode-icon anim-flash">⊗</span> Trigger Deterministic Collapse
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Real-Time Seams & Ingress Stream -->
+      <section class="panel-section glass-card">
+        <div class="panel-header">
+          <h2>Live Ingress & Seam Activity Stream</h2>
+          <span class="live-pulse">REAL-TIME INGRESS</span>
+        </div>
+
+        <div class="seam-stream-container" id="seamStreamContainer">
+          <!-- Dynamically streaming seam activity lines -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Detonations History Table -->
+    <section class="panel-section glass-card">
+      <div class="panel-header">
+        <h2>Detonation History & Bounded Receipts</h2>
+        <span class="panel-badge">AUDITED DISPOSITIONS</span>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table" id="detonationsTable">
+          <thead>
+            <tr>
+              <th>Run ID</th>
+              <th>Target Identity</th>
+              <th>Surface Hashes</th>
+              <th>Terminal Kind</th>
+              <th>Disposition</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="detonationsTableBody">
+            <!-- Dynamically Populated Rows -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Ash Receipt Modal -->
+    <div class="modal-backdrop" id="ashReceiptModal" style="display: none;">
+      <div class="modal-card glass-card">
+        <div class="modal-header">
+          <h3><span class="unicode-icon text-amber">⌬</span> Authenticated Ash Receipt v1</h3>
+          <button class="modal-close" id="btnCloseAshModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="ash-badge-row">
+            <span class="ash-status-chip" id="ashDispositionChip">ADMIT</span>
+            <span class="hmac-verify-badge"><span class="unicode-icon text-emerald">✓</span> HMAC PBKDF2: VERIFIED</span>
+          </div>
+
+          <div class="ash-grid">
+            <div class="ash-field">
+              <span class="field-title">Run ID</span>
+              <code id="ashRunId">run-8f585828</code>
+            </div>
+            <div class="ash-field">
+              <span class="field-title">Frozen Upstream Lineage</span>
+              <code>motefield@584ab11 (private predecessor)</code>
+            </div>
+            <div class="ash-field">
+              <span class="field-title">Kernel & Rootfs Hash</span>
+              <code id="ashKernelHash">sha256:e3b0c44298fc1c149afbf4c8996fb924...</code>
+            </div>
+            <div class="ash-field">
+              <span class="field-title">Replay Ciphertext Hash</span>
+              <code id="ashReplayHash">sha256:4eaeb4fce974783cd3bcd4fe30afa15e...</code>
+            </div>
+          </div>
+
+          <div class="purge-verification-panel">
+            <h4>External Purge Verification Results</h4>
+            <div class="purge-grid">
+              <div class="purge-item">Process Reaped: <span class="check-pass" id="purgeProc"><span class="unicode-icon text-emerald">✓</span> PASS</span></div>
+              <div class="purge-item">Cgroup Removed: <span class="check-pass" id="purgeCgroup"><span class="unicode-icon text-emerald">✓</span> PASS</span></div>
+              <div class="purge-item">NetNS Removed: <span class="check-pass" id="purgeNetns"><span class="unicode-icon text-emerald">✓</span> PASS</span></div>
+              <div class="purge-item">RAM Jail Deleted: <span class="check-pass" id="purgeRam"><span class="unicode-icon text-emerald">✓</span> PASS</span></div>
+            </div>
+          </div>
+
+          <div class="raw-receipt-container">
+            <h4>Bounded Metadata Payload (Zero Raw Text)</h4>
+            <pre><code id="ashJsonPayload">{ ... }</code></pre>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnQuarantineViewer">
+            <span class="unicode-icon">🔐</span> Open Quarantined Replay Viewer
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

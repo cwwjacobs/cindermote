@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SeamRegistryV1",
+  "description": "Registry of all path crossings across trust boundaries.",
+  "type": "object",
+  "required": ["version", "seams"],
+  "properties": {
+    "version": { "type": "string", "const": "v1" },
+    "seams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seam_id", "source_zone", "target_zone", "owner", "broker", "instrumented"],
+        "properties": {
+          "seam_id": { "type": "string" },
+          "source_zone": { "type": "string" },
+          "target_zone": { "type": "string" },
+          "owner": { "type": "string" },
+          "broker": { "type": "string" },
+          "instrumented": { "type": "boolean" },
+          "collapse_cue_id": { "type": "string" }
+        }
+      }
+    }
+  }
+}

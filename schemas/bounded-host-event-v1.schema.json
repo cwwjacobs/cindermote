@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BoundedHostEventV1",
+  "description": "Schema for bounded metadata-only host events crossing the guest-host boundary.",
+  "type": "object",
+  "required": [
+    "event_version",
+    "run_id",
+    "event_type",
+    "timestamp_utc",
+    "surface_hashes"
+  ],
+  "properties": {
+    "event_version": { "type": "string", "const": "cindermote-event/v1" },
+    "run_id": { "type": "string" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "MCP_INITIALIZED",
+        "SURFACE_DISCOVERED",
+        "TOOL_INVOKED",
+        "COLLAPSE_CUE_TRIGGERED",
+        "PURGE_COMPLETED"
+      ]
+    },
+    "timestamp_utc": { "type": "string" },
+    "tool_count": { "type": "integer" },
+    "prompt_count": { "type": "integer" },
+    "resource_count": { "type": "integer" },
+    "surface_hashes": {
+      "type": "object",
+      "required": ["schema_hashes"],
+      "properties": {
+        "schema_hashes": { "type": "array", "items": { "type": "string" } },
+        "uri_hashes": { "type": "array", "items": { "type": "string" } },
+        "result_hash": { "type": "string" }
+      }
+    },
+    "capability_classification": { "type": "string" },
+    "collapse_cue": { "type": "string" }
+  },
+  "additionalProperties": false
+}

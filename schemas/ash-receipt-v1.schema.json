@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AshReceiptV1",
+  "description": "Authenticated metadata-only receipt emitted after Scalar Kernel run.",
+  "type": "object",
+  "required": [
+    "receipt_version",
+    "run_id",
+    "target_identity",
+    "target_hashes",
+    "provenance",
+    "kernel_hash",
+    "rootfs_hash",
+    "policy_hash",
+    "capability_manifest_hash",
+    "seam_registry_hash",
+    "provider_id",
+    "model_id",
+    "discovered_surface_counts",
+    "discovered_surface_hashes",
+    "terminal_kind",
+    "purge_verification_results",
+    "final_disposition",
+    "replay_ciphertext_hash",
+    "authentication_metadata"
+  ],
+  "properties": {
+    "receipt_version": { "type": "string", "const": "cindermote-ash/v1" },
+    "run_id": { "type": "string" },
+    "target_identity": { "type": "string" },
+    "target_hashes": { "type": "object" },
+    "provenance": {
+      "type": "object",
+      "required": ["frozen_base_repo", "frozen_base_commit"],
+      "properties": {
+        "frozen_base_repo": { "type": "string" },
+        "frozen_base_commit": { "type": "string" }
+      }
+    },
+    "kernel_hash": { "type": "string" },
+    "rootfs_hash": { "type": "string" },
+    "policy_hash": { "type": "string" },
+    "capability_manifest_hash": { "type": "string" },
+    "seam_registry_hash": { "type": "string" },
+    "provider_id": { "type": "string" },
+    "model_id": { "type": "string" },
+    "probe_profile": { "type": "string" },
+    "mcp_protocol_version": { "type": "string" },
+    "discovered_surface_counts": {
+      "type": "object",
+      "required": ["tools", "prompts", "resources"],
+      "properties": {
+        "tools": { "type": "integer" },
+        "prompts": { "type": "integer" },
+        "resources": { "type": "integer" }
+      }
+    },
+    "discovered_surface_hashes": { "type": "object" },
+    "broker_events": { "type": "array" },
+    "collapse_cue": { "type": "string" },
+    "terminal_kind": {
+      "type": "string",
+      "enum": ["COLLAPSE", "CINDER", "NORMAL"]
+    },
+    "burn_steps": { "type": "array", "items": { "type": "string" } },
+    "purge_verification_results": {
+      "type": "object",
+      "required": ["cgroup_removed", "netns_removed", "process_reaped", "ram_jail_deleted"],
+      "properties": {
+        "cgroup_removed": { "type": "boolean" },
+        "netns_removed": { "type": "boolean" },
+        "process_reaped": { "type": "boolean" },
+        "ram_jail_deleted": { "type": "boolean" }
+      }
+    },
+    "incomplete_evidence_fields": { "type": "array", "items": { "type": "string" } },
+    "final_disposition": {
+      "type": "string",
+      "enum": [
+        "ADMIT",
+        "ADMIT_WITH_RESTRICTIONS",
+        "QUARANTINE",
+        "REJECT",
+        "INCONCLUSIVE",
+        "INFRASTRUCTURE_FAILED"
+      ]
+    },
+    "replay_ciphertext_hash": { "type": "string" },
+    "authentication_metadata": {
+      "type": "object",
+      "required": ["algorithm", "signature_hmac", "timestamp_utc"],
+      "properties": {
+        "algorithm": { "type": "string" },
+        "signature_hmac": { "type": "string" },
+        "timestamp_utc": { "type": "string" }
+      }
+    }
+  }
+}

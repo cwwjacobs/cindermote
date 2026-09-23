@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cindermote.invalid/schemas/browser-evidence-v2.schema.json",
+  "title": "Cindermote Host Browser Evidence v2",
+  "description": "Host-owned metadata evidence. CDP and plain HTTP carry web_origin; HTTPS proxy CONNECT carries connect_authority. Code-level validation enforces source-specific witness ownership and mutual exclusion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidence_version", "events", "streams"],
+  "properties": {
+    "evidence_version": {
+      "const": "cindermote.browser-evidence/v2"
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "$ref": "#/$defs/browserEvent"
+      }
+    },
+    "streams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["browser", "cdp", "egress", "vm"],
+      "properties": {
+        "browser": {"$ref": "#/$defs/streamStatus"},
+        "cdp": {"$ref": "#/$defs/streamStatus"},
+        "egress": {"$ref": "#/$defs/streamStatus"},
+        "vm": {"$ref": "#/$defs/streamStatus"}
+      }
+    }
+  },
+  "$defs": {
+    "browserEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "source",
+        "kind",
+        "web_origin",
+        "connect_authority",
+        "disposition"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99999
+        },
+        "source": {
+          "enum": ["browser", "cdp", "egress", "vm"]
+        },
+        "kind": {
+          "enum": [
+            "lifecycle",
+            "navigation",
+            "redirect",
+            "network_request",
+            "download_attempt",
+            "file_upload_attempt",
+            "popup_attempt",
+            "active_interaction",
+            "prompt_marker",
+            "mixed_content",
+            "browser_sandbox",
+            "telemetry_loss"
+          ]
+        },
+        "web_origin": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "^https?://[^/?#]+$"
+            }
+          ]
+        },
+        "connect_authority": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 512,
+              "pattern": "^[^:/?#@]+:[0-9]{1,5}$"
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "started",
+            "stopped",
+            "failed",
+            "committed",
+            "blocked",
+            "followed",
+            "allowed",
+            "attempted",
+            "visible",
+            "hidden",
+            "observed",
+            "active",
+            "inactive"
+          ]
+        }
+      }
+    },
+    "streamStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "event_count"],
+      "properties": {
+        "complete": {"type": "boolean"},
+        "event_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      }
+    },
+    "reducedEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_version",
+        "complete",
+        "telemetry_incomplete",
+        "fail_closed",
+        "decision",
+        "events_observed",
+        "streams",
+        "findings"
+      ],
+      "properties": {
+        "evidence_version": {
+          "const": "cindermote.browser-evidence/v2"
+        },
+        "complete": {"type": "boolean"},
+        "telemetry_incomplete": {"type": "boolean"},
+        "fail_closed": {"type": "boolean"},
+        "decision": {"enum": ["ALLOW", "DENY"]},
+        "events_observed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "streams": {"type": "object"},
+        "findings": {"type": "array"}
+      }
+    }
+  }
+}

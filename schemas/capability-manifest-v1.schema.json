@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CapabilityManifestV1",
+  "description": "Defines capability permissions and dispositions across components.",
+  "type": "object",
+  "required": ["version", "capabilities"],
+  "properties": {
+    "version": { "type": "string", "const": "v1" },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability_id", "component_id", "disposition", "broker_required"],
+        "properties": {
+          "capability_id": { "type": "string" },
+          "component_id": { "type": "string" },
+          "disposition": {
+            "type": "string",
+            "enum": ["ALLOW", "DENY", "BROKERED", "PROHIBITED"]
+          },
+          "broker_required": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

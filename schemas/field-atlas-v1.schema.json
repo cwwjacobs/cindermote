@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FieldAtlasV1",
+  "description": "Declares components inside and outside the Cindermote trust boundary.",
+  "type": "object",
+  "required": ["version", "components"],
+  "properties": {
+    "version": { "type": "string", "const": "v1" },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "trust_zone", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "trust_zone": {
+            "type": "string",
+            "enum": ["TRUSTED_HOST", "BROKERED_SEAM", "TAINTED_GUEST", "EXTERNAL_PROVIDER"]
+          },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+.git
+.cindermote
+__pycache__
+*.pyc
+alerts
+quarantine
+receipts
+policy/golden-snapshot.tar.gz

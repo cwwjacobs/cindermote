@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+
+mount -t proc -o nosuid,nodev,noexec proc /proc
+mount -t sysfs -o ro,nosuid,nodev,noexec sysfs /sys
+mount -t devtmpfs -o nosuid,noexec devtmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts -o nosuid,noexec,gid=5,mode=0620 devpts /dev/pts
+mount -t tmpfs -o nosuid,nodev,noexec,size=32m,mode=0755 tmpfs /run
+mkdir -p /run/cindermote
+mount -t tmpfs -o nosuid,nodev,noexec,size=128m,mode=1777 tmpfs /tmp
+mount -t tmpfs -o nosuid,nodev,noexec,size=256m,mode=1777 tmpfs /dev/shm
+mount -t tmpfs -o nosuid,nodev,noexec,size=256m,mode=0700,uid=1000,gid=1000 tmpfs /home/probe
+
+ip link set lo up
+ip link set eth0 up
+ip address add 172.30.0.2/30 dev eth0
+ip route add 169.254.250.1/32 via 172.30.0.1 dev eth0
+
+mkdir -p /job
+mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb /job
+
+chown 1000:1000 /run/cindermote
+# The evidence collector remains a distinct root trust domain inside the
+# disposable guest.  Dispatch is selected only from the trusted job manifest;
+# target bytes remain an opaque read-only file until the selected guest agent
+# consumes them.
+profile="$(python3 -I -B -c 'import json; v=json.load(open("/job/request.json", encoding="utf-8")); print(v.get("profile", "browser-probe/v1"))')"
+case "$profile" in
+  agent-probe/v0)
+    python3 -I -B /opt/cindermote/agent_probe_agent.py /job/request.json || status=$?
+    ;;
+  browser-probe/v1)
+    python3 -I -B /opt/cindermote/browser_agent.py /job/request.json || status=$?
+    ;;
+  *)
+    status=125
+    ;;
+esac
+status=${status:-0}
+sync
+reboot -f
+exit "$status"

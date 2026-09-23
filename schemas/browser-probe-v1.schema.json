@@ -1,0 +1,386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cindermote.invalid/schemas/browser-probe-v1.schema.json",
+  "title": "Cindermote Browser Probe Request v1",
+  "description": "A deny-by-default, passive-navigation-only browser probe request. Code-level validation additionally canonicalizes authorities and rejects IP literals, private/special-use hostnames, credentials, fragments, and ambiguous browser URL spellings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "url",
+    "authorized_origins",
+    "navigation",
+    "budgets"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "cindermote.browser-probe/v1"
+    },
+    "url": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^https?://"
+    },
+    "authorized_origins": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^https?://[^/?#]+/?$"
+      }
+    },
+    "navigation": {
+      "$ref": "#/$defs/passiveNavigation"
+    },
+    "budgets": {
+      "$ref": "#/$defs/budgets"
+    }
+  },
+  "$defs": {
+    "passiveNavigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "allow_clicks",
+        "allow_typing",
+        "allow_uploads",
+        "allow_downloads",
+        "allow_permission_grants",
+        "allow_popups",
+        "max_tabs"
+      ],
+      "properties": {
+        "mode": {
+          "const": "passive"
+        },
+        "allow_clicks": {
+          "const": false
+        },
+        "allow_typing": {
+          "const": false
+        },
+        "allow_uploads": {
+          "const": false
+        },
+        "allow_downloads": {
+          "const": false
+        },
+        "allow_permission_grants": {
+          "const": false
+        },
+        "allow_popups": {
+          "const": false
+        },
+        "max_tabs": {
+          "const": 1
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wall_clock_sec",
+        "cpu_vcpu",
+        "ram_mib",
+        "max_network_bytes",
+        "max_events",
+        "max_redirects"
+      ],
+      "properties": {
+        "wall_clock_sec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "cpu_vcpu": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "ram_mib": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 4096
+        },
+        "max_network_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "max_events": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "max_redirects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        }
+      }
+    },
+    "browserEvent": {
+      "description": "Metadata only. origin is scheme/host/port; full URLs and page content are forbidden.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "source",
+        "kind",
+        "origin",
+        "disposition"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99999
+        },
+        "source": {
+          "enum": [
+            "browser",
+            "cdp",
+            "egress",
+            "vm"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "lifecycle",
+            "navigation",
+            "redirect",
+            "network_request",
+            "download_attempt",
+            "file_upload_attempt",
+            "popup_attempt",
+            "active_interaction",
+            "prompt_marker",
+            "mixed_content",
+            "browser_sandbox",
+            "network_consistency",
+            "telemetry_loss"
+          ]
+        },
+        "origin": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "^https?://[^/?#]+$"
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "started",
+            "stopped",
+            "failed",
+            "committed",
+            "blocked",
+            "followed",
+            "allowed",
+            "attempted",
+            "denied",
+            "visible",
+            "hidden",
+            "observed",
+            "active",
+            "inactive",
+            "matched",
+            "mismatched"
+          ]
+        }
+      }
+    },
+    "streamStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complete",
+        "event_count"
+      ],
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      }
+    },
+    "evidenceBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_version",
+        "events",
+        "streams"
+      ],
+      "properties": {
+        "evidence_version": {
+          "const": "cindermote.browser-evidence/v1"
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/$defs/browserEvent"
+          }
+        },
+        "streams": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "browser",
+            "cdp",
+            "egress",
+            "vm"
+          ],
+          "properties": {
+            "browser": {
+              "$ref": "#/$defs/streamStatus"
+            },
+            "cdp": {
+              "$ref": "#/$defs/streamStatus"
+            },
+            "egress": {
+              "$ref": "#/$defs/streamStatus"
+            },
+            "vm": {
+              "$ref": "#/$defs/streamStatus"
+            }
+          }
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "count",
+        "severity"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "pattern": "^web_[a-z0-9_]+$",
+          "maxLength": 128
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "severity": {
+          "enum": [
+            "HIGH",
+            "CRITICAL"
+          ]
+        }
+      }
+    },
+    "streamReduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declared_event_count",
+        "observed_event_count",
+        "complete"
+      ],
+      "properties": {
+        "declared_event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reducedEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_version",
+        "complete",
+        "telemetry_incomplete",
+        "fail_closed",
+        "decision",
+        "events_observed",
+        "streams",
+        "findings"
+      ],
+      "properties": {
+        "evidence_version": {
+          "const": "cindermote.browser-evidence/v1"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "telemetry_incomplete": {
+          "type": "boolean"
+        },
+        "fail_closed": {
+          "type": "boolean"
+        },
+        "decision": {
+          "enum": [
+            "ALLOW",
+            "DENY"
+          ]
+        },
+        "events_observed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "streams": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "browser",
+            "cdp",
+            "egress",
+            "vm"
+          ],
+          "properties": {
+            "browser": {
+              "$ref": "#/$defs/streamReduction"
+            },
+            "cdp": {
+              "$ref": "#/$defs/streamReduction"
+            },
+            "egress": {
+              "$ref": "#/$defs/streamReduction"
+            },
+            "vm": {
+              "$ref": "#/$defs/streamReduction"
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
+      }
+    }
+  }
+}
