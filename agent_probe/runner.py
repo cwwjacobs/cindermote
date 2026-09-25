@@ -142,6 +142,7 @@ def run_agent_probe(
 
     runtime_result: AgentProbeRuntimeResult | None = None
     admission_failed = False
+    runtime_failure: dict[str, Any] | None = None
     try:
         runtime_result = runtime(
             manifest=manifest,
@@ -153,6 +154,20 @@ def run_agent_probe(
         )
     except FirecrackerUnavailable:
         admission_failed = True
+    except OSError as exc:
+        # Bounded metadata only: exception messages can carry host paths or
+        # target-identifying text, which must not enter signed artifacts.
+        runtime_failure = {
+            "code": "RUNTIME_OSERROR",
+            "exception": type(exc).__name__,
+            "errno": exc.errno if isinstance(exc.errno, int) else None,
+        }
+    except Exception as exc:
+        runtime_failure = {
+            "code": "RUNTIME_UNEXPECTED_ERROR",
+            "exception": type(exc).__name__,
+            "errno": None,
+        }
     finally:
         for index in range(len(api_key)):
             api_key[index] = 0
@@ -162,11 +177,13 @@ def run_agent_probe(
         road_frozen_hash=road_frozen_hash,
         runtime_result=runtime_result,
         admission_failed_before_launch=admission_failed,
+        runtime_failure=runtime_failure,
     )
     road_walked = build_road_walked(
         manifest=manifest,
         road_frozen_hash=road_frozen_hash,
         runtime_result=runtime_result,
+        runtime_failure=runtime_failure,
     )
     road_diff = build_road_diff(
         manifest=manifest,
