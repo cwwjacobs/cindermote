@@ -44,6 +44,7 @@ RULES = {
     "broker_failure": ("syscall_class", "CRITICAL", "known_bad"),
     "firecracker_runtime_failure": ("syscall_class", "CRITICAL", "known_bad"),
     "isolation_admission_failure": ("syscall_class", "CRITICAL", "known_bad"),
+    "payload_observation_incomplete": ("syscall_class", "CRITICAL", "anomalous"),
     "purge_failure": ("syscall_class", "CRITICAL", "known_bad"),
     "web_active_interaction_attempt": ("syscall_class", "CRITICAL", "known_bad"),
     "web_blocked_egress_attempt": ("network_flows", "HIGH", "anomalous"),

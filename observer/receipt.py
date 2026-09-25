@@ -170,6 +170,16 @@ _LEGACY_GATE_KEYS = {
     "final_authority",
     "override_blocked_by_fail_closed",
 }
+_LEGACY_OBSERVATION_KEYS = {
+    "status",
+    "exec_observed",
+    "failure_class",
+    "diagnostic",
+}
+LEGACY_OBSERVATION_FAILURE_CLASSES = {
+    "interpreter_startup",
+    "library_load",
+}
 _DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[1] / "policy" / "hotcell-policy.json"
 
 
@@ -1056,6 +1066,42 @@ def _validate_legacy_receipt(
     if gate != expected_gate:
         raise ValueError("legacy gate result contradicts signed evidence")
 
+    observation = receipt.get("observation")
+    if observation is not None:
+        if not isinstance(observation, dict) or set(observation) != _LEGACY_OBSERVATION_KEYS:
+            raise ValueError("legacy observation section is malformed")
+        if observation["status"] not in {"COMPLETE", "EVALUATION_INCOMPLETE"}:
+            raise ValueError("legacy observation status is invalid")
+        if not isinstance(observation["exec_observed"], bool):
+            raise ValueError("legacy observation exec witness must be bool")
+        failure_class = observation["failure_class"]
+        if failure_class is not None and failure_class not in LEGACY_OBSERVATION_FAILURE_CLASSES:
+            raise ValueError("legacy observation failure class is invalid")
+        diagnostic = observation["diagnostic"]
+        if not isinstance(diagnostic, str) or len(diagnostic) > 512:
+            raise ValueError("legacy observation diagnostic must be a bounded string")
+        observation_finding = finding_map.get("payload_observation_incomplete")
+        if observation["status"] == "EVALUATION_INCOMPLETE":
+            if observation_finding != (1, "CRITICAL"):
+                raise ValueError("incomplete observation lacks canonical finding")
+            if failure_class is None:
+                raise ValueError("incomplete observation lacks a failure class")
+            if gate["final_decision"] != "EVALUATION_INCOMPLETE":
+                raise ValueError("incomplete observation must not produce a verdict")
+            if receipt["telemetry_incomplete"] is not True:
+                raise ValueError("incomplete observation must mark telemetry incomplete")
+            if receipt["residual_uncertainty"] != 1.0:
+                raise ValueError("incomplete observation must retain full uncertainty")
+        else:
+            if observation_finding is not None:
+                raise ValueError("completed observation contradicts incomplete finding")
+            if failure_class is not None or diagnostic:
+                raise ValueError("completed observation carries failure diagnostics")
+            if gate["final_decision"] not in {"ALLOW", "DENY"}:
+                raise ValueError("completed observation requires a terminal verdict")
+    elif "payload_observation_incomplete" in finding_map:
+        raise ValueError("incomplete observation finding lacks an observation section")
+
     infrastructure_failed = bool(
         isolation_finding or missing_controls or not purge["verified_externally"]
     )
@@ -1092,7 +1138,7 @@ def validate_receipt(
         "residual_uncertainty",
         "receipt_signature",
     }
-    optional = {"mcp_protocol", "browser_probe"}
+    optional = {"mcp_protocol", "browser_probe", "observation"}
     if not isinstance(receipt, dict) or not required.issubset(receipt):
         raise ValueError("receipt is missing required sections")
     if set(receipt) - required - optional:
@@ -1112,7 +1158,11 @@ def validate_receipt(
     for key in ("namespace_used", "seccomp_loaded", "cgroups_used", "mlock_used"):
         if not isinstance(isolation.get(key), bool):
             raise ValueError(f"isolation.{key} must be bool")
-    if receipt["gate"].get("final_decision") not in {"ALLOW", "DENY"}:
+    if receipt["gate"].get("final_decision") not in {
+        "ALLOW",
+        "DENY",
+        "EVALUATION_INCOMPLETE",
+    }:
         raise ValueError("invalid final gate decision")
     if receipt["purge"].get("verified_externally") not in {True, False}:
         raise ValueError("purge verification must be bool")
@@ -1153,6 +1203,7 @@ def create_receipt(
     key_path: str | Path,
     mcp_protocol: dict | None = None,
     browser_probe: dict | None = None,
+    observation: dict | None = None,
     active_policy: str | Path | dict | None = None,
 ) -> dict:
     unsigned = {
@@ -1178,6 +1229,8 @@ def create_receipt(
         unsigned["mcp_protocol"] = mcp_protocol
     if browser_probe is not None:
         unsigned["browser_probe"] = browser_probe
+    if observation is not None:
+        unsigned["observation"] = observation
     key = load_or_create_key(key_path)
     receipt = dict(unsigned)
     receipt["receipt_signature"] = sign_receipt(unsigned, key)

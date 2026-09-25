@@ -355,6 +355,7 @@ class ProbeResult:
     isolation_confirmed: bool
     purge_verified: bool
     error: str | None = None
+    observation_status: str = "COMPLETE"
 
 
 def _ensure_snapshot() -> None:
@@ -461,6 +462,15 @@ def _evaluate_receipt(probe: CinderProbe, receipt: dict[str, Any]) -> ProbeResul
     )
     purge_verified = purge.get("verified_externally") is True
 
+    # Containment can only be claimed from a completed payload observation;
+    # an incomplete one is reported separately, never as execution coverage.
+    observation = receipt.get("observation", {})
+    observation_status = (
+        observation.get("status", "COMPLETE")
+        if isinstance(observation, dict)
+        else "COMPLETE"
+    )
+
     expected_rank = RISK_RANK.get(probe.expected_risk)
     observed_rank = RISK_RANK.get(observed_risk, -1)
     risk_ok = expected_rank is not None and observed_rank >= expected_rank
@@ -472,6 +482,7 @@ def _evaluate_receipt(probe: CinderProbe, receipt: dict[str, Any]) -> ProbeResul
         and rules_ok
         and isolation_confirmed
         and purge_verified
+        and observation_status == "COMPLETE"
     )
 
     return ProbeResult(
@@ -487,6 +498,7 @@ def _evaluate_receipt(probe: CinderProbe, receipt: dict[str, Any]) -> ProbeResul
         expected_rules=probe.expected_rules,
         isolation_confirmed=isolation_confirmed,
         purge_verified=purge_verified,
+        observation_status=observation_status,
     )
 
 
@@ -520,6 +532,7 @@ def _run_probe_scoped(probe: CinderProbe, paths: EvidencePaths) -> ProbeResult:
                 isolation_confirmed=False,
                 purge_verified=False,
                 error=f"{type(exc).__name__}: {exc}",
+                observation_status="EVALUATION_INCOMPLETE",
             )
 
     return _evaluate_receipt(probe, receipt)
@@ -732,6 +745,11 @@ def generate_report(results: list[ProbeResult]) -> str:
 
         lines.append(f"- Observed risk: `{r.observed_risk}` (expected: `{r.expected_risk}`)")
         lines.append(f"- Gate decision: `{r.observed_decision}` (expected: `{r.expected_decision}`)")
+        if r.observation_status != "COMPLETE":
+            lines.append(
+                f"- ⚠️ Observation: `{r.observation_status}` — no completed payload "
+                "observation; this is not execution coverage"
+            )
         lines.append(f"- Detector rules fired: `{sorted(r.observed_rules)}`")
         if r.expected_rules:
             missing = r.expected_rules - r.observed_rules
@@ -862,6 +880,7 @@ def main(args: list[str] | None = None) -> int:
                     "expected_rules": sorted(r.expected_rules),
                     "isolation_confirmed": r.isolation_confirmed,
                     "purge_verified": r.purge_verified,
+                    "observation_status": r.observation_status,
                     "error": r.error,
                     "job_id": r.receipt.get("identity", {}).get("job_id"),
                 }

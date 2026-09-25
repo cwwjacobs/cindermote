@@ -16,9 +16,14 @@ Tests are split into two tiers:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import platform
+import shutil
+import struct
 import sys
+import tarfile
 import tempfile
 import unittest
 import uuid
@@ -30,6 +35,7 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 import cindermote.incident_gate as incident_gate_module
+from cindermote.gate.policy_gate import apply_scoring_matrix
 from cindermote.incident_gate import (
     CINDER_PROBES,
     CinderProbe,
@@ -42,6 +48,7 @@ from cindermote.incident_gate import (
     run_doctor,
     run_probe,
 )
+from cindermote.observer.receipt import create_receipt, validate_receipt
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +310,25 @@ class TestCinderProbeIntegration(unittest.TestCase):
                 f"seccomp={isolation.get('seccomp_loaded')} "
                 f"findings={findings}"
             )
+        # An admitted sandbox whose payload observation cannot complete is
+        # "not admitted" for containment purposes: report the suite as
+        # skipped here, separately from execution coverage, instead of
+        # letting incomplete evidence masquerade as probe verdicts.
+        observation = smoke.receipt.get("observation", {})
+        failure_class = (
+            observation.get("failure_class") if isinstance(observation, dict) else None
+        )
+        if (
+            smoke.observation_status != "COMPLETE"
+            or smoke.observed_decision == "EVALUATION_INCOMPLETE"
+        ):
+            cls._evidence_workspace.cleanup()
+            raise unittest.SkipTest(
+                "sandbox admission cannot execute the payload interpreter "
+                f"(observation={smoke.observation_status} "
+                f"failure_class={failure_class} decision={smoke.observed_decision}); "
+                "containment coverage requires a completed observation"
+            )
 
     @classmethod
     def tearDownClass(cls):
@@ -426,6 +452,572 @@ class TestCinderProbeIntegration(unittest.TestCase):
         self.assertEqual(len(results), len(CINDER_PROBES))
         report = generate_report(results)
         self.assertIn("ALL BOUNDARIES HELD", report)
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed observation: incomplete execution evidence must never reduce
+# to ALLOW / clean success.
+# ---------------------------------------------------------------------------
+
+_POLICY = json.loads((PROJECT_DIR / "policy" / "hotcell-policy.json").read_text(encoding="utf-8"))
+_POLICY_HASH = hashlib.sha256(
+    json.dumps(_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
+).hexdigest()
+_SHA = "a" * 64
+
+
+def _incomplete_outward() -> dict:
+    return {
+        "risk_level": "suspicious",
+        "evidence": [
+            {
+                "tap_category": "syscall_class",
+                "rule_id": "payload_observation_incomplete",
+                "count": 1,
+            }
+        ],
+        "capabilities_requested": [],
+        "destinations": [],
+        "canaries_tripped": [],
+        "uncertainty": 1.0,
+    }
+
+
+def _valid_purge() -> dict:
+    return {
+        "method": "test cleanup",
+        "verified_externally": True,
+        "process_group_empty": True,
+        "cgroup_empty": True,
+        "cgroup_removed": True,
+        "job_mount_removed": True,
+        "job_directory_removed": True,
+        "processes_remaining": 0,
+        "remaining_host_resources": [],
+    }
+
+
+def _signed_legacy_receipt(
+    key_path: Path,
+    *,
+    outward: dict,
+    findings: list[dict],
+    observation: dict | None,
+    telemetry_incomplete: bool,
+    uncertainty: float,
+) -> dict:
+    job_id = "mf-run-inc00001"
+    return create_receipt(
+        identity={
+            "job_id": job_id,
+            "artifact_sha256": _SHA,
+            "artifact_type": "python-script",
+            "submitted_by": "test",
+            "received_at": "2026-09-24T00:00:00Z",
+        },
+        snapshot_policy={
+            "snapshot_sha256": _SHA,
+            "snapshot_verified_by": "test",
+            "policy_version": _POLICY["policy_version"],
+            "policy_hash": _POLICY_HASH,
+        },
+        isolation={
+            "mode": "degraded-user",
+            "namespace_used": True,
+            "seccomp_loaded": True,
+            "cgroups_used": False,
+            "mlock_used": False,
+        },
+        budgets_granted={},
+        capabilities={"requested": [], "granted": [], "denied": []},
+        telemetry_summary={},
+        canaries_touched={},
+        destinations_attempted={},
+        detector_findings=findings,
+        gate=apply_scoring_matrix(outward, {}, job_id),
+        outward_report=outward,
+        purge=_valid_purge(),
+        telemetry_incomplete=telemetry_incomplete,
+        budget_exhausted=False,
+        residual_uncertainty=uncertainty,
+        key_path=key_path,
+        observation=observation,
+        active_policy=_POLICY,
+    )
+
+
+class TestIncompleteObservationReduction(unittest.TestCase):
+    """The legacy reducer maps incomplete observation to EVALUATION_INCOMPLETE."""
+
+    def test_policy_gate_never_returns_allow_for_incomplete_observation(self):
+        for override in ({}, {"mf-run-x": "ALLOW"}, {"mf-run-x": "DENY"}):
+            with self.subTest(override=override):
+                gate = apply_scoring_matrix(_incomplete_outward(), override, "mf-run-x")
+                self.assertNotEqual(gate["final_decision"], "ALLOW")
+                self.assertEqual(gate["final_decision"], "EVALUATION_INCOMPLETE")
+                self.assertEqual(gate["final_authority"], "fail_closed_incomplete_observation")
+
+    def test_human_allow_override_is_blocked_for_incomplete_observation(self):
+        gate = apply_scoring_matrix(_incomplete_outward(), {"mf-run-x": "ALLOW"}, "mf-run-x")
+        self.assertEqual(gate["final_decision"], "EVALUATION_INCOMPLETE")
+        self.assertTrue(gate["override_blocked_by_fail_closed"])
+
+    def test_allow_remains_reachable_for_empty_evidence_completed_observation(self):
+        outward = {
+            "risk_level": "benign",
+            "evidence": [],
+            "capabilities_requested": [],
+            "destinations": [],
+            "canaries_tripped": [],
+            "uncertainty": 0.0,
+        }
+        gate = apply_scoring_matrix(outward, {}, "mf-run-x")
+        self.assertEqual(gate["final_decision"], "ALLOW")
+
+    def test_signed_incomplete_observation_receipt_validates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = _signed_legacy_receipt(
+                Path(directory) / "key",
+                outward=_incomplete_outward(),
+                findings=[{"rule_id": "payload_observation_incomplete", "count": 1, "severity": "CRITICAL"}],
+                observation={
+                    "status": "EVALUATION_INCOMPLETE",
+                    "exec_observed": False,
+                    "failure_class": "interpreter_startup",
+                    "diagnostic": "",
+                },
+                telemetry_incomplete=True,
+                uncertainty=1.0,
+            )
+            self.assertEqual(receipt["gate"]["final_decision"], "EVALUATION_INCOMPLETE")
+            validate_receipt(receipt, active_policy=_POLICY)
+
+    def test_validator_rejects_incomplete_observation_contradictions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = _signed_legacy_receipt(
+                Path(directory) / "key",
+                outward=_incomplete_outward(),
+                findings=[{"rule_id": "payload_observation_incomplete", "count": 1, "severity": "CRITICAL"}],
+                observation={
+                    "status": "EVALUATION_INCOMPLETE",
+                    "exec_observed": False,
+                    "failure_class": "interpreter_startup",
+                    "diagnostic": "",
+                },
+                telemetry_incomplete=True,
+                uncertainty=1.0,
+            )
+
+            complete_claim = json.loads(json.dumps(base))
+            complete_claim["observation"]["status"] = "COMPLETE"
+            with self.assertRaises(ValueError):
+                validate_receipt(complete_claim, active_policy=_POLICY)
+
+            allow_claim = json.loads(json.dumps(base))
+            allow_claim["gate"]["final_decision"] = "ALLOW"
+            with self.assertRaises(ValueError):
+                validate_receipt(allow_claim, active_policy=_POLICY)
+
+            missing_section = json.loads(json.dumps(base))
+            del missing_section["observation"]
+            with self.assertRaises(ValueError):
+                validate_receipt(missing_section, active_policy=_POLICY)
+
+            full_telemetry = json.loads(json.dumps(base))
+            full_telemetry["telemetry_incomplete"] = False
+            with self.assertRaises(ValueError):
+                validate_receipt(full_telemetry, active_policy=_POLICY)
+
+            oversized = json.loads(json.dumps(base))
+            oversized["observation"]["diagnostic"] = "x" * 513
+            with self.assertRaises(ValueError):
+                validate_receipt(oversized, active_policy=_POLICY)
+
+    def test_allow_receipt_with_incomplete_observation_is_rejected(self):
+        outward = {
+            "risk_level": "benign",
+            "evidence": [],
+            "capabilities_requested": [],
+            "destinations": [],
+            "canaries_tripped": [],
+            "uncertainty": 0.0,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = _signed_legacy_receipt(
+                Path(directory) / "key",
+                outward=outward,
+                findings=[],
+                observation={
+                    "status": "COMPLETE",
+                    "exec_observed": True,
+                    "failure_class": None,
+                    "diagnostic": "",
+                },
+                telemetry_incomplete=False,
+                uncertainty=0.0,
+            )
+            self.assertEqual(receipt["gate"]["final_decision"], "ALLOW")
+            validate_receipt(receipt, active_policy=_POLICY)
+            # Downgrading the observation without incomplete evidence breaks
+            # the binding: ALLOW must stand on a completed observation.
+            receipt["observation"]["status"] = "EVALUATION_INCOMPLETE"
+            with self.assertRaises(ValueError):
+                validate_receipt(receipt, active_policy=_POLICY)
+
+    def test_load_diagnostic_extracts_bounded_loader_line(self):
+        detonate = incident_gate_module.detonate_module
+        stderr = (
+            b"WARNING: Cindermote is using degraded-user isolation (no cgroups or mlock).\n"
+            b"/usr/bin/python3: error while loading shared libraries: libexpat.so.1: "
+            b"cannot open shared object file: No such file or directory\n"
+        )
+        failure_class, diagnostic = detonate._observation_load_diagnostic(stderr)
+        self.assertEqual(failure_class, "library_load")
+        self.assertIn("error while loading shared libraries", diagnostic)
+        self.assertNotIn("degraded-user isolation", diagnostic)
+
+    def test_load_diagnostic_quiet_stderr_has_no_failure_class(self):
+        detonate = incident_gate_module.detonate_module
+        failure_class, diagnostic = detonate._observation_load_diagnostic(b"")
+        self.assertEqual(failure_class, "")
+        self.assertEqual(diagnostic, "")
+
+    def test_load_diagnostic_bounds_and_sanitizes_excerpt(self):
+        detonate = incident_gate_module.detonate_module
+        stderr = b"error while loading shared libraries: " + b"x\xff" * 300 + b"\n"
+        failure_class, diagnostic = detonate._observation_load_diagnostic(stderr)
+        self.assertEqual(failure_class, "library_load")
+        self.assertLessEqual(len(diagnostic), 240)
+        self.assertTrue(all(32 <= ord(char) < 127 for char in diagnostic))
+
+    def test_evaluate_receipt_never_holds_on_incomplete_observation(self):
+        probe = CINDER_PROBES[0]
+        receipt = {
+            "outward_report": {"risk_level": "hostile"},
+            "gate": {"final_decision": "DENY"},
+            "isolation": {"namespace_used": True, "seccomp_loaded": True},
+            "purge": {"verified_externally": True},
+            "detector_findings": [{"rule_id": "network_exfil_attempt"}],
+            "observation": {
+                "status": "EVALUATION_INCOMPLETE",
+                "exec_observed": False,
+                "failure_class": "interpreter_startup",
+                "diagnostic": "",
+            },
+        }
+        result = _evaluate_receipt(probe, receipt)
+        self.assertFalse(result.containment_held)
+        self.assertEqual(result.observation_status, "EVALUATION_INCOMPLETE")
+
+
+# ---------------------------------------------------------------------------
+# Detonation fixtures: interpreter-startup, library-load, and observer
+# failure must never reduce to ALLOW; detection must work when the
+# observation completes.
+# ---------------------------------------------------------------------------
+
+_HOSTILE_SOCKET_SOURCE = (
+    "import socket\n"
+    "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+    "try:\n"
+    "    s.connect(('10.0.0.1', 80))\n"
+    "except Exception:\n"
+    "    pass\n"
+)
+_BENIGN_SOURCE = "print('observation-complete')\n"
+
+
+def _elf_soname(path: Path) -> str | None:
+    """Read DT_SONAME from an ELF64 shared object (mirrors detonate._elf_links)."""
+    try:
+        data = path.read_bytes()
+    except (OSError, ValueError):
+        return None
+    if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+        return None
+    try:
+        header = struct.unpack_from("<16sHHIQQQIHHHHHH", data, 0)
+    except struct.error:
+        return None
+    phoff, phentsize, phnum = header[5], header[9], header[10]
+    segments: list[tuple[int, int, int, int]] = []
+    dynamic: tuple[int, int] | None = None
+    for index in range(phnum):
+        offset = phoff + index * phentsize
+        try:
+            p_type, _, p_offset, p_vaddr, _, p_filesz, _, _ = struct.unpack_from(
+                "<IIQQQQQQ", data, offset
+            )
+        except struct.error:
+            return None
+        segments.append((p_type, p_offset, p_vaddr, p_filesz))
+        if p_type == 2:  # PT_DYNAMIC
+            dynamic = (p_offset, p_filesz)
+    if dynamic is None:
+        return None
+    soname_relative: int | None = None
+    strtab_address: int | None = None
+    strtab_size = 0
+    start, size = dynamic
+    for offset in range(start, min(start + size, len(data)), 16):
+        try:
+            tag, value = struct.unpack_from("<QQ", data, offset)
+        except struct.error:
+            break
+        if tag == 0:
+            break
+        if tag == 14:  # DT_SONAME
+            soname_relative = value
+        elif tag == 5:  # DT_STRTAB
+            strtab_address = value
+        elif tag == 10:  # DT_STRSZ
+            strtab_size = value
+    if soname_relative is None or strtab_address is None:
+        return None
+    strtab_offset = None
+    for p_type, p_offset, p_vaddr, p_filesz in segments:
+        if p_type == 1 and p_vaddr <= strtab_address < p_vaddr + p_filesz:
+            strtab_offset = p_offset + (strtab_address - p_vaddr)
+            break
+    if strtab_offset is None:
+        return None
+    maximum = min(len(data), strtab_offset + (strtab_size or len(data)))
+    begin = strtab_offset + soname_relative
+    if begin >= maximum:
+        return None
+    end = data.find(b"\0", begin, maximum)
+    if end == -1:
+        return None
+    return data[begin:end].decode("utf-8", "replace")
+
+
+def _build_rootfs_tar(target: Path, populate) -> Path:
+    root = target.parent / f"{target.stem}-rootfs"
+    for relative in (
+        "home/mote/.aws",
+        "home/mote/.ssh",
+        "tmp",
+        "var/log",
+        "dev",
+        "proc",
+        "sys",
+        "etc",
+        "usr/bin",
+        "usr/lib",
+        "lib64",
+    ):
+        (root / relative).mkdir(parents=True, exist_ok=True)
+    (root / "etc" / "passwd").write_text(
+        "root:x:0:0:cindermote:/home/mote:/bin/sh\n", encoding="utf-8"
+    )
+    (root / "etc" / "group").write_text("root:x:0:\n", encoding="utf-8")
+    (root / "etc" / "hosts").write_text("127.0.0.1 localhost cindermote\n", encoding="utf-8")
+    populate(root)
+    with tarfile.open(target, "w:gz") as archive:
+        archive.add(root, arcname=".", recursive=True)
+    return target
+
+
+def _build_runnable_snapshot(workspace: Path) -> Path | None:
+    """Repack the host-built golden snapshot with the SONAME symlinks its
+    library closure dropped. Returns None when the snapshot cannot be made
+    runnable on this host (reported as a skip, not a verdict)."""
+    detonate = incident_gate_module.detonate_module
+    _ensure_snapshot()
+    extract_dir = workspace / "runnable-rootfs"
+    extract_dir.mkdir()
+    with tarfile.open(detonate.SNAPSHOT_PATH, "r:gz") as archive:
+        try:
+            archive.extractall(extract_dir, filter="data")
+        except TypeError:
+            archive.extractall(extract_dir)
+    for library in extract_dir.rglob("*"):
+        if not library.is_file() or library.is_symlink() or ".so" not in library.name:
+            continue
+        soname = _elf_soname(library)
+        if not soname:
+            continue
+        link = library.parent / soname
+        if not link.exists():
+            link.symlink_to(library.name)
+    target = workspace / "runnable-snapshot.tar.gz"
+    with tarfile.open(target, "w:gz") as archive:
+        archive.add(extract_dir, arcname=".", recursive=True)
+    return target
+
+
+@unittest.skipIf(SKIP_INTEGRATION, SKIP_REASON)
+class TestObservationFailureDetonation(unittest.TestCase):
+    """End-to-end fail-closed detonations through the real sandbox."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._workspace = tempfile.TemporaryDirectory(
+            prefix="cindermote-observation-failures-"
+        )
+        workspace = Path(cls._workspace.name)
+        cls._missing_snapshot = _build_rootfs_tar(
+            workspace / "missing-interpreter.tar.gz", lambda _root: None
+        )
+        cls._loader_snapshot = None
+        true_binary = shutil.which("true")
+        ld_linux = Path("/lib64/ld-linux-x86-64.so.2")
+        if platform.machine() == "x86_64" and true_binary and ld_linux.exists():
+            def _rig_loader(rootfs: Path) -> None:
+                # A valid ELF whose dynamic loader is present but whose
+                # required shared libraries are absent: execve succeeds, the
+                # loader fails before any payload instruction runs.
+                shutil.copy2(true_binary, rootfs / "usr" / "bin" / "python3")
+                shutil.copy2(
+                    ld_linux.resolve(),
+                    rootfs / "lib64" / "ld-linux-x86-64.so.2",
+                )
+
+            cls._loader_snapshot = _build_rootfs_tar(
+                workspace / "loader-failure.tar.gz", _rig_loader
+            )
+        cls._runnable_snapshot = None
+        try:
+            cls._runnable_snapshot = _build_runnable_snapshot(workspace)
+        except Exception:
+            cls._runnable_snapshot = None
+        # Admission smoke: the failure fixtures require a sandbox that admits
+        # the child; otherwise report not-admitted as a skip.
+        smoke, _scratch = cls()._detonate_fixture(cls._missing_snapshot, _BENIGN_SOURCE)
+        isolation = smoke.get("isolation", {})
+        if not (isolation.get("namespace_used") and isolation.get("seccomp_loaded")):
+            cls._workspace.cleanup()
+            raise unittest.SkipTest(
+                "sandbox admission unavailable for observation-failure fixtures: "
+                f"namespace={isolation.get('namespace_used')} "
+                f"seccomp={isolation.get('seccomp_loaded')}"
+            )
+        cls._runnable_observation = None
+        if cls._runnable_snapshot is not None:
+            probe, _scratch = cls()._detonate_fixture(cls._runnable_snapshot, _BENIGN_SOURCE)
+            cls._runnable_observation = probe.get("observation", {}).get("status")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._workspace.cleanup()
+
+    def _detonate_fixture(self, snapshot: Path, source: str) -> tuple[dict, Path]:
+        detonate = incident_gate_module.detonate_module
+        scratch = Path(self._workspace.name) / f"run-{uuid.uuid4().hex[:8]}"
+        scratch.mkdir()
+        artifact = scratch / "payload.py"
+        artifact.write_text(source, encoding="utf-8")
+        manifest = {
+            "sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+            "built_at": "test",
+            "size_bytes": snapshot.stat().st_size,
+        }
+        with (
+            patch.multiple(
+                detonate,
+                SNAPSHOT_PATH=snapshot,
+                RECEIPTS_DIR=scratch / "receipts",
+                QUARANTINE_DIR=scratch / "quarantine",
+                ALERTS_DIR=scratch / "alerts",
+                OBSERVER_KEY_PATH=scratch / ".observer_key",
+            ),
+            patch.object(detonate, "verify_snapshot", return_value=manifest),
+        ):
+            receipt = detonate.detonate(
+                artifact, "python-script", submitted_by="incident-gate-fail-closed-test"
+            )
+        return receipt, scratch
+
+    def _assert_incomplete_receipt(self, receipt: dict, failure_class: str) -> None:
+        gate = receipt["gate"]
+        self.assertNotEqual(gate["final_decision"], "ALLOW")
+        self.assertEqual(gate["final_decision"], "EVALUATION_INCOMPLETE")
+        self.assertEqual(receipt["residual_uncertainty"], 1.0)
+        self.assertTrue(receipt["telemetry_incomplete"])
+        self.assertEqual(
+            receipt["detector_findings"],
+            [{"rule_id": "payload_observation_incomplete", "count": 1, "severity": "CRITICAL"}],
+        )
+        observation = receipt["observation"]
+        self.assertEqual(observation["status"], "EVALUATION_INCOMPLETE")
+        self.assertEqual(observation["failure_class"], failure_class)
+        probe = next(p for p in CINDER_PROBES if p.name == "registry_proxy_abuse")
+        result = _evaluate_receipt(probe, receipt)
+        self.assertFalse(result.containment_held)
+        validate_receipt(receipt, active_policy=_POLICY)
+
+    def test_missing_interpreter_executable_never_yields_allow(self):
+        receipt, scratch = self._detonate_fixture(self._missing_snapshot, _HOSTILE_SOCKET_SOURCE)
+        self._assert_incomplete_receipt(receipt, "interpreter_startup")
+        self.assertFalse(receipt["observation"]["exec_observed"])
+        # Bounded diagnostics are preserved on the failure path.
+        alerts = list((scratch / "alerts").glob("*.alert"))
+        self.assertEqual(len(alerts), 1)
+        alert = json.loads(alerts[0].read_text(encoding="utf-8"))
+        self.assertEqual(alert["reason"], "payload_observation_incomplete")
+        self.assertEqual(alert["details"]["failure_class"], "interpreter_startup")
+        self.assertLessEqual(len(alert["details"]["diagnostic"]), 512)
+
+    def test_loader_failure_before_payload_never_yields_allow(self):
+        if self._loader_snapshot is None:
+            self.skipTest("loader fixture requires x86_64 /bin/true and ld-linux")
+        receipt, _scratch = self._detonate_fixture(self._loader_snapshot, _HOSTILE_SOCKET_SOURCE)
+        self._assert_incomplete_receipt(receipt, "library_load")
+        self.assertTrue(receipt["observation"]["exec_observed"])
+        self.assertIn(
+            "error while loading shared libraries",
+            receipt["observation"]["diagnostic"],
+        )
+
+    def test_observer_exit_before_final_evidence_never_yields_allow(self):
+        detonate = incident_gate_module.detonate_module
+        real_tracer = detonate.HostTracer
+
+        class FailingTracer(real_tracer):
+            def resume_root(self):
+                super().resume_root()
+                self.trace_error = "injected:observer_exit"
+
+        with patch.object(detonate, "HostTracer", FailingTracer):
+            receipt, _scratch = self._detonate_fixture(self._missing_snapshot, _HOSTILE_SOCKET_SOURCE)
+        gate = receipt["gate"]
+        self.assertNotEqual(gate["final_decision"], "ALLOW")
+        self.assertEqual(gate["final_decision"], "DENY")
+        self.assertTrue(receipt["telemetry_incomplete"])
+        self.assertEqual(receipt["residual_uncertainty"], 1.0)
+        self.assertIn(
+            "telemetry_loss",
+            {finding["rule_id"] for finding in receipt["detector_findings"]},
+        )
+
+    def test_hostile_probe_is_detected_when_observation_completes(self):
+        if self._runnable_observation != "COMPLETE":
+            self.skipTest(
+                "host-built snapshot cannot execute its interpreter on this host "
+                f"(observation={self._runnable_observation}); detection coverage "
+                "requires a completed observation"
+            )
+        receipt, _scratch = self._detonate_fixture(self._runnable_snapshot, _HOSTILE_SOCKET_SOURCE)
+        self.assertEqual(receipt["gate"]["final_decision"], "DENY")
+        self.assertEqual(receipt["observation"]["status"], "COMPLETE")
+        self.assertIn(
+            "network_exfil_attempt",
+            {finding["rule_id"] for finding in receipt["detector_findings"]},
+        )
+        probe = next(p for p in CINDER_PROBES if p.name == "registry_proxy_abuse")
+        result = _evaluate_receipt(probe, receipt)
+        self.assertTrue(result.containment_held)
+
+    def test_allow_is_reachable_only_from_completed_observation(self):
+        if self._runnable_observation != "COMPLETE":
+            self.skipTest(
+                "host-built snapshot cannot execute its interpreter on this host "
+                f"(observation={self._runnable_observation})"
+            )
+        receipt, _scratch = self._detonate_fixture(self._runnable_snapshot, _BENIGN_SOURCE)
+        self.assertEqual(receipt["observation"]["status"], "COMPLETE")
+        self.assertEqual(receipt["gate"]["final_decision"], "ALLOW")
+        self.assertEqual(receipt["residual_uncertainty"], 0.0)
 
 
 if __name__ == "__main__":
