@@ -6,7 +6,11 @@ umask 077
 
 mount -t proc -o nosuid,nodev,noexec proc /proc
 mount -t sysfs -o ro,nosuid,nodev,noexec sysfs /sys
-mount -t devtmpfs -o nosuid,noexec devtmpfs /dev
+# Kernels with CONFIG_DEVTMPFS_MOUNT present /dev already populated;
+# remounting devtmpfs over it fails and must not abort boot.
+if ! grep -q ' /dev devtmpfs ' /proc/mounts; then
+  mount -t devtmpfs -o nosuid,noexec devtmpfs /dev
+fi
 mkdir -p /dev/pts /dev/shm
 mount -t devpts -o nosuid,noexec,gid=5,mode=0620 devpts /dev/pts
 mount -t tmpfs -o nosuid,nodev,noexec,size=32m,mode=0755 tmpfs /run

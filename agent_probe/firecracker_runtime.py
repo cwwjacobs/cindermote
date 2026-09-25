@@ -163,7 +163,10 @@ def _connect_agent_guest(
             if hello != expected:
                 raise AgentProbeRuntimeError("agent-probe guest handshake mismatch")
             return candidate, buffered
-        except (OSError, ValueError, json.JSONDecodeError, AgentProbeRuntimeError):
+        except (OSError, ValueError, json.JSONDecodeError, AgentProbeRuntimeError, FirecrackerRuntimeError):
+            # The VMM refuses the CONNECT while the guest is still booting;
+            # that is the normal case, so retry until the deadline (the
+            # browser path's _connect_guest retries on the same condition).
             candidate.close()
             time.sleep(0.05)
     raise AgentProbeRuntimeError("agent-probe guest vsock handshake timed out")

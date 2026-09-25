@@ -373,7 +373,11 @@ def _origin_policy(origin: str, addresses: tuple[str, ...]) -> _OriginPolicy:
 
 
 class _ProxyServer(socketserver.ThreadingTCPServer):
-    allow_reuse_address = False
+    # One worker is spawned per job and must be restartable back-to-back.
+    # SO_REUSEADDR only admits rebinding past TIME_WAIT — an active listener
+    # on the same authority still refuses the bind, so the single-owner
+    # posture is unchanged (SO_REUSEPORT would be the unsafe variant).
+    allow_reuse_address = True
     # ThreadingMixIn only tracks non-daemon threads.  The worker process must
     # remain killable if a handler wedges, so use daemon threads but maintain a
     # separate, complete registry with a bounded join below.
