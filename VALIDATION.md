@@ -19,8 +19,8 @@ below (Debian 13, Python 3.13.5, `umask 022`).
 
 All 8 failures are `tests/test_incident_gate.py::TestCinderProbeIntegration`
 probe and full-run tests. The host-built snapshot cannot start its interpreter
-on this Debian multiarch host, so no payload executes (see `README.md` Known
-issues). The 4 skips are the same as below.
+on this Debian multiarch host, so no payload executes (historical failure,
+repaired by PRs #1 and #2). The 4 skips are the same as below.
 
 ## 2026-09-23 — earlier private baseline (with committed snapshot)
 
@@ -118,8 +118,9 @@ with the observer key) records `execution_status=COMPLETE`,
 `quarantine/agent-probe/`. The model leg used a dummy key against
 `https://api.openai.com/v1/chat/completions`, so the guest honestly reports
 `PROVIDER_FAILURE` (HTTP 401) and the gate is `EVALUATION_INCOMPLETE` —
-incomplete evidence is not promoted to a verdict. A live provider credential
-would complete the remaining leg with no code change.
+incomplete evidence is not promoted to a verdict. A live-provider ALLOW result
+remains unverified; a credential alone is not proof that the remaining leg
+succeeds.
 
 ### Defects fixed to reach this run
 
@@ -154,7 +155,7 @@ would complete the remaining leg with no code change.
 - A full ALLOW-grade agent-probe run: needs a live provider credential.
 - The root-required job-image contract test outside CI.
 
-## Status
+## Historical branch status
 
 - Portable components: implemented and unit/component tested.
 - Legacy namespace profile and Incident Gate: passing on this host with a
@@ -162,3 +163,47 @@ would complete the remaining leg with no code change.
 - Supported-host (KVM) agent-probe end-to-end: passing on this host
   (execution COMPLETE; gate honestly EVALUATION_INCOMPLETE without a live
   provider credential).
+
+## 2026-09-25 — rebased PR #2 integration validation
+
+Exact head: `667a6c82be7aca602a07081964a7dcea8d48bac1`, rebased onto
+PR #1 merge `31901805167549f62a66da004c0ac234456cd952`. Its tracked tree
+matches original PR #2 head `5892433e35dbdb3b0dfb492d961a0e8ffb606dea`;
+merge-commit mount-proof repairs and their regressions were retained.
+
+Environment: Ubuntu 22.04, Linux 6.8.0-138-generic, Python 3.12.14 at
+`/home/orz/Downloads/readmeFIXES/.tools/python/bin/python3`, non-root,
+`umask 022`. Existing generated snapshot and pinned microVM assets retained.
+Initial runs rejected group-writable source metadata. Tracked file permissions
+were corrected to the documented requirement, without changing the gate.
+
+| Command | Result |
+|---|---|
+| `python3 -m compileall -q .` | exit 0 |
+| `python3 tests/test_vertical_spine.py` | 14 passed |
+| `python3 -m pytest -q -rs tests --deselect=tests/test_agent_probe_runtime_protocol.py::test_job_image_copies_opaque_target_without_parsing` | **268 passed, 4 skipped, 1 deselected; 129 subtests passed** (101.98 s) |
+| `python3 -m pytest -q tests/firecracker` | **112 passed, 1 skipped; 113 subtests passed** |
+
+The full-suite skips are browser KVM (no public HTTPS fixture), agent-probe
+supported-host (root/explicit environment unavailable), live model relay (no
+provider key), and the root/writable-cgroup test. The Incident Gate integration
+class executes on this host. The separate job-image contract was attempted
+unprivileged and failed at `mkfs.ext4`; CI runs it with root. This local failure
+is not counted as a pass or hidden by another test exclusion.
+
+Fresh exact-head CI: [push run](https://github.com/cwwjacobs/cindermote/actions/runs/36127800067)
+and [PR run](https://github.com/cwwjacobs/cindermote/actions/runs/36127805996).
+Both runs passed on the exact rebased head, including compilation, the
+unprivileged suite, and the root job-image contract. Hosted CI does not establish real KVM execution.
+
+## Final-main release gate
+
+PR #2 merged as `e73398292e528410b394d6082a1b4ace8ba02511` after both
+exact-head CI runs passed. This documentation correction follows that merge.
+
+The entries above are historical source-tree or branch observations, not
+validation of the final shipped HEAD. The post-1.0.0 release remains blocked
+until the supported-host command is rerun on final main and its signed receipt,
+execution status, cleanup status, witnesses, and gate decision are checked.
+Root authentication is currently unavailable in this validation session.
+No browser-profile E2E or live-provider ALLOW result is claimed.

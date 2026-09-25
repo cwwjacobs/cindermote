@@ -1,6 +1,6 @@
 # Cindermote Hotcell — Scalar Kernel Runtime
 
-Release 1.0.0.
+Post-1.0.0 main; no new release has been published.
 
 Cindermote is a collapse-ready runtime for handling untrusted
 agent material inside disposable Firecracker microVMs. Only bounded
@@ -19,8 +19,9 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
 | Sealed replay with a separate quarantined viewer | Implemented; unit tested | `tests/test_vertical_spine.py` 10 |
 | Capability broker: unknown capability resolves to `COLLAPSE` | Decision logic implemented; unit tested | `tests/test_vertical_spine.py` 06 |
 | Host-native MCP execution (init, `tools/list`, `tools/call`, vertical run) | **Disabled in this baseline**; calls raise `HostNativeExecutionDisabled` | `tests/test_vertical_spine.py` 01–05 |
-| Supported-host (bare-metal KVM) end-to-end run | **Not yet demonstrated** | `tests/firecracker/test_supported_host_e2e.py` is opt-in |
-| Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated (`docs/legacy-deprecation.md`); integration tests currently fail on hosts where they run (see Known issues) | `tests/test_incident_gate.py` |
+| Supported-host KVM agent-probe | Real Firecracker execution demonstrated on the pre-merge branch; final-main revalidation pending | [Validation record](VALIDATION.md); `tests/test_agent_probe_supported_host.py` |
+| Browser-profile KVM / live-provider ALLOW | **Not demonstrated** | Opt-in browser gate and live-provider tests remain unrun |
+| Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated; snapshot startup and hostile-probe classification repaired; incomplete observation fails closed | [Regression tests](tests/test_incident_gate.py), [validation](VALIDATION.md), [deprecation](docs/legacy-deprecation.md) |
 
 ## Design invariants
 
@@ -39,44 +40,49 @@ which ones are exercised today.
    readable through a separate quarantined viewer.
 5. **Missing evidence is failure, not success.**
 
-## Known issues
+## Repair and evidence
 
-- **Incident Gate results.** Fixed on the supported host: the snapshot
-  bootstrap dropped SONAME symlinks from the library closure (so e.g.
-  `libexpat.so.1` was not resolvable inside the chroot) and mirrored the
-  stdlib at its host-absolute path, which the chrooted interpreter does not
-  search. Both placements are fixed, and `TestCinderProbeIntegration` now
-  executes for real where the sandbox admits (13/13 on the KSL-08 validation
-  host): all hostile probes DENY, benign ALLOW only from a completed
-  observation. The seccomp filter now denies Internet-family socket creation
-  with EPERM under observation instead of killing the payload at its first
-  attempt (namespace-class syscalls still kill), so multi-stage probes
-  surface every stage; the `__exec__` tainted-output tripwire is detected.
-  On hosts where the sandbox cannot start the payload interpreter, the suite
-  still skips with the observation failure class reported, keeping "not
-  admitted" separate from execution coverage; GitHub-hosted runners skip at
-  the admission check as before.
-- **Incomplete execution evidence.** Fixed: the legacy reducer separates a
-  completed payload observation from interpreter-startup,
-  snapshot/library-load, admission, and observer failure. Incomplete
-  observation now records `payload_observation_incomplete` and maps to
-  `EVALUATION_INCOMPLETE` with full uncertainty, a bounded loader diagnostic,
-  and a non-success exit; `ALLOW` requires a completed observation
-  (`observation.status == COMPLETE` in the signed receipt).
-- **Supported-host Firecracker E2E.** First real execution on the KSL-08
-  validation host (`VALIDATION.md` 2026-09-25): microVM boots, guest agent
-  runs, teardown verified, signed receipt records `COMPLETE` execution.
-  Without a live provider credential the model leg ends in guest
-  `PROVIDER_FAILURE` and the gate is honestly `EVALUATION_INCOMPLETE`; a live
-  credential completes the run with no code change. The browser-profile KVM
-  gate still needs an operator-run public HTTPS fixture. Note for operators:
-  the privilege-separated egress worker drops to a dedicated uid before
-  lazily importing the interpreter's stdlib, so the stdlib path must be
-  traversable by that uid (a mode-0700 home directory above a non-system
-  Python breaks it); preflight reports readiness only when the whole chain
-  works.
-- **File permissions.** Two `tests/firecracker/` tests reject group-writable
-  source files. Clone with `umask 022`.
+The [1.0.0 validation](VALIDATION.md#2026-09-23--release-100-tree)
+reproduced eight Incident Gate failures: the host-built snapshot interpreter
+could not start, yet missing observations could reduce to a clean verdict.
+[PR #1](https://github.com/cwwjacobs/cindermote/pull/1) requires explicit
+completed observation and telemetry proof, blocks human ALLOW overrides of
+incomplete evidence, and persists signed failure receipts after runtime errors.
+
+[PR #2](https://github.com/cwwjacobs/cindermote/pull/2) repairs snapshot SONAME
+and stdlib placement, multi-stage hostile-probe detection, and the Firecracker
+boot chain. Mount-inspection failures remain not-ready; both RAM mounts must
+prove `noswap`. The locally built rootfs is pinned with its build receipt.
+The historical supported-host run booted a real microVM and verified cleanup;
+a dummy provider key produced `PROVIDER_FAILURE` / `EVALUATION_INCOMPLETE`.
+That is execution evidence, not a live-provider ALLOW result.
+
+Follow the [regression tests](tests/test_incident_gate.py),
+[runner failure tests](tests/test_agent_probe_runner.py),
+[mount-proof tests](tests/firecracker/test_firecracker_runtime.py),
+[CI workflow](.github/workflows/ci.yml), and [validation record](VALIDATION.md).
+Hosted CI checks portable behavior and the root job-image contract; it does
+not establish supported-host KVM execution. The validation record distinguishes
+historical branch receipts from evidence for the final merged commit.
+
+## Known issues and remaining limitations
+
+- **Final-main supported-host validation is pending.** The recorded branch
+  microVM runs do not prove the shipped HEAD. Root authentication is required
+  to rerun the agent-probe check and verify its signed receipts on this host.
+- **Browser-profile KVM E2E is unverified.** It needs an operator-controlled
+  public HTTPS fixture with a DNS-named certificate.
+- **Live-provider ALLOW is unverified.** No live credential was used in the
+  recorded supported-host run. A successful ALLOW outcome is not guaranteed
+  by supplying a credential; it must be executed and verified.
+- **Host admission is conditional.** GitHub-hosted runners skip legacy
+  integration tests when sandbox admission fails. Such skips are not
+  execution coverage. The legacy profile remains deprecated, and host-native
+  MCP execution remains disabled.
+- **Host and file permissions matter.** Clone with `umask 022`; trusted source
+  gates reject group-writable files. The dedicated egress worker must be able
+  to traverse the Python stdlib path. Follow [RUNBOOK.md](RUNBOOK.md) for
+  pinned assets, RAM mounts, service identities, and host preparation.
 
 ## Main commands
 
@@ -98,11 +104,11 @@ python3 tests/test_vertical_spine.py
 ./scripts/package-release.sh
 ```
 
-`python3 -m unittest discover -s tests` runs only 88 tests: it does not find
+`python3 -m unittest discover -s tests` does not find
 `tests/firecracker/` (no `__init__.py`) or pytest-style test functions. Use
 pytest for the full suite.
 
-Recorded results for the current baseline are in `VALIDATION.md`.
+Recorded results and the commits they cover are in [VALIDATION.md](VALIDATION.md).
 
 ## Documentation
 
