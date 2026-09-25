@@ -1774,6 +1774,42 @@ def _record_isolation_admission_failure(detector: DetectorEngine) -> None:
     )
 
 
+_OBSERVATION_LOAD_SIGNATURES = (
+    b"error while loading shared libraries",
+    b"cannot open shared object file",
+    b"Fatal Python error: init_",
+    b"ModuleNotFoundError: No module named 'encodings'",
+)
+_WRAPPER_WARNING_PREFIX = b"WARNING: Cindermote is using degraded-user isolation"
+
+
+def _bounded_diagnostic_line(line: bytes, limit: int = 240) -> str:
+    text = line.decode("ascii", errors="replace")
+    printable = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in text)
+    return printable[:limit]
+
+
+def _observation_load_diagnostic(raw_stderr: bytes) -> tuple[str, str]:
+    """Reduce bounded sandbox stderr to (failure_class, diagnostic excerpt).
+
+    failure_class is "library_load" when a loader or interpreter-init failure
+    signature is present, else "".  stderr is already bounded by the output
+    budget; on the paths that consume this, the payload never executed, so the
+    bytes come from the trusted wrapper, loader, or interpreter — not the
+    artifact.
+    """
+    fallback = ""
+    for line in raw_stderr.split(b"\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(_WRAPPER_WARNING_PREFIX):
+            continue
+        if not fallback:
+            fallback = _bounded_diagnostic_line(stripped)
+        if any(signature in stripped for signature in _OBSERVATION_LOAD_SIGNATURES):
+            return "library_load", _bounded_diagnostic_line(stripped)
+    return "", fallback
+
+
 def _empty_legacy_telemetry_summary() -> dict[str, int | str]:
     return {
         "syscall_events": 0,
@@ -2586,6 +2622,45 @@ def detonate(
     if tracer.namespace_escape:
         _write_alert(job_id, "namespace_escape_suspicion")
 
+    # Separate a completed payload observation from interpreter-startup and
+    # snapshot/library-load failure.  An admitted sandbox that never exec'd
+    # the payload interpreter, or whose interpreter died in the loader before
+    # the payload ran, produced no execution evidence; only an empty one.
+    # Telemetry loss and real findings take precedence: they already carry
+    # fail-closed weight, and payload output mimicking loader errors cannot
+    # downgrade a verdict.
+    payload_exec_observed = bool(tracer.exec_completed_pids)
+    observation_failure: str | None = None
+    observation_diagnostic = ""
+    if not isolation_failures and not detector.finding_counts:
+        load_failure, stderr_excerpt = _observation_load_diagnostic(bytes(raw_stderr))
+        if not payload_exec_observed:
+            observation_failure = "interpreter_startup"
+            observation_diagnostic = stderr_excerpt
+        elif load_failure:
+            observation_failure = load_failure
+            observation_diagnostic = stderr_excerpt
+    if observation_failure is not None:
+        detector.record(
+            make_event(
+                "syscall",
+                "payload_observation_incomplete",
+                observation_failure,
+                "exit",
+                "anomalous",
+            )
+        )
+        telemetry_incomplete = True
+        _write_alert(
+            job_id,
+            "payload_observation_incomplete",
+            {
+                "failure_class": observation_failure,
+                "exec_observed": payload_exec_observed,
+                "diagnostic": observation_diagnostic,
+            },
+        )
+
     cleanup_pids.update(tracer.active_pids)
     if admission is not None:
         admission.close()
@@ -2676,6 +2751,25 @@ def detonate(
         else:
             canaries_touched[name] = "untouched"
 
+    observation = None
+    if not isolation_failures:
+        if observation_failure is not None:
+            observation = {
+                "status": "EVALUATION_INCOMPLETE",
+                "exec_observed": payload_exec_observed,
+                "failure_class": observation_failure,
+                "diagnostic": observation_diagnostic,
+            }
+        elif not (telemetry_incomplete or detector.telemetry_incomplete):
+            # Telemetry-loss and purge-failure runs already carry their own
+            # fail-closed findings; the observation section would add nothing.
+            observation = {
+                "status": "COMPLETE",
+                "exec_observed": payload_exec_observed,
+                "failure_class": None,
+                "diagnostic": "",
+            }
+
     receipt = create_receipt(
         identity={
             "job_id": job_id,
@@ -2718,6 +2812,7 @@ def detonate(
         residual_uncertainty=uncertainty,
         key_path=OBSERVER_KEY_PATH,
         mcp_protocol=mcp.receipt() if mcp is not None else None,
+        observation=observation,
         active_policy=policy,
     )
     RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -2769,7 +2864,9 @@ def _cli() -> int:
         parser.error("--artifact and --artifact-type are required (or use --browser-url)")
     receipt = detonate(args.artifact, args.artifact_type, args.policy)
     print(json.dumps(receipt, indent=2, sort_keys=True))
-    return 0
+    # ALLOW and DENY are completed evaluations; anything else (e.g.
+    # EVALUATION_INCOMPLETE) means no verdict was rendered — exit non-success.
+    return 0 if receipt.get("gate", {}).get("final_decision") in {"ALLOW", "DENY"} else 2
 
 
 if __name__ == "__main__":

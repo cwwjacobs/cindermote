@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import json
 from pathlib import Path
 
@@ -10,7 +11,12 @@ from cindermote.agent_probe.evidence import GuestEvidenceSealer
 from cindermote.agent_probe.firecracker_runtime import AgentProbeRuntimeResult
 from cindermote.agent_probe.hpke import generate_key_pair
 from cindermote.agent_probe.protocol import digest_bytes
-from cindermote.agent_probe.receipt import EXIT_ALLOW, EXIT_INVALID_RECEIPT, derive_exit_code
+from cindermote.agent_probe.receipt import (
+    EXIT_ALLOW,
+    EXIT_CLEANUP_FAILURE,
+    EXIT_INVALID_RECEIPT,
+    derive_exit_code,
+)
 from cindermote.agent_probe.runner import run_agent_probe
 
 
@@ -82,3 +88,73 @@ def test_runner_builds_allow_receipt_without_host_plaintext(tmp_path: Path) -> N
     tampered = copy.deepcopy(result.envelope)
     tampered["payload"]["gate_decision"] = "DENY"
     assert derive_exit_code(tampered, observer) == EXIT_INVALID_RECEIPT
+
+
+def _run_with_failing_runtime(tmp_path: Path, failure: BaseException):
+    observer = b"o" * 32
+    target = tmp_path / "evil-name.skill"
+    marker = "HOST_PATH_MARKER_DO_NOT_LEAK"
+    target.write_text("payload", encoding="utf-8")
+
+    def failing_runtime(**kwargs):
+        assert any(kwargs["api_key"]), "API key must still be live inside the runtime call"
+        raise failure
+
+    api_key = bytearray(b"fresh-secret")
+    result = run_agent_probe(
+        target,
+        model=ModelConfig("openai-compatible", "model", "https://api.example.com/v1/chat/completions"),
+        api_key=api_key,
+        observer_key=observer,
+        quarantine_public_key=b"p" * 32,
+        quarantine_key_id="a" * 32,
+        quarantine_dir=tmp_path / "quarantine",
+        receipt_dir=tmp_path / "receipts",
+        runtime=failing_runtime,
+    )
+    return result, api_key, observer, marker
+
+
+def _assert_signed_incomplete_run(result, api_key: bytearray, observer: bytes, marker: str) -> None:
+    # The key buffer is zeroed even though the runtime raised.
+    assert api_key == bytearray(len(api_key))
+    # A signed failure receipt and the supporting road artifacts are persisted.
+    for path in (
+        result.receipt_path,
+        result.road_frozen_path,
+        result.road_walked_path,
+        result.road_diff_path,
+    ):
+        assert Path(path).is_file(), path
+    assert verify_envelope(result.envelope, observer, "cindermote.agent-probe-receipt/v1")
+    payload = result.envelope["payload"]
+    assert payload["execution_status"] == "INFRASTRUCTURE_FAILED"
+    assert payload["gate_decision"] == "EVALUATION_INCOMPLETE"
+    assert result.exit_code == derive_exit_code(result.envelope, observer)
+    assert result.exit_code == EXIT_CLEANUP_FAILURE
+    assert result.exit_code != EXIT_ALLOW
+    # Bounded failure metadata must not smuggle host paths or target names.
+    for path in (result.receipt_path, result.road_frozen_path, result.road_walked_path, result.road_diff_path):
+        text = Path(path).read_text(encoding="utf-8")
+        assert marker not in text
+        assert "evil-name.skill" not in text
+
+
+def test_runtime_oserror_zeroes_key_and_persists_signed_failure_receipt(tmp_path: Path) -> None:
+    result, api_key, observer, marker = _run_with_failing_runtime(
+        tmp_path, OSError(errno.EIO, "device vanished at /host/HOST_PATH_MARKER_DO_NOT_LEAK")
+    )
+    _assert_signed_incomplete_run(result, api_key, observer, marker)
+    road_walked = json.loads(Path(result.road_walked_path).read_text(encoding="utf-8"))
+    assert road_walked["runtime_failure_code"] == "RUNTIME_OSERROR"
+    assert road_walked["runtime_failure"] == {"exception": "OSError", "errno": errno.EIO}
+
+
+def test_unexpected_runtime_exception_zeroes_key_and_persists_signed_failure_receipt(tmp_path: Path) -> None:
+    result, api_key, observer, marker = _run_with_failing_runtime(
+        tmp_path, RuntimeError("boom referencing /host/HOST_PATH_MARKER_DO_NOT_LEAK")
+    )
+    _assert_signed_incomplete_run(result, api_key, observer, marker)
+    road_walked = json.loads(Path(result.road_walked_path).read_text(encoding="utf-8"))
+    assert road_walked["runtime_failure_code"] == "RUNTIME_UNEXPECTED_ERROR"
+    assert road_walked["runtime_failure"] == {"exception": "RuntimeError", "errno": None}

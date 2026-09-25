@@ -44,16 +44,23 @@ which ones are exercised today.
 - **Incident Gate results.** The legacy namespace profile builds a golden
   rootfs snapshot from the host on first use (`policy/golden-snapshot.tar.gz`,
   not distributed). On Debian/Ubuntu multiarch layouts the built snapshot
-  cannot start its interpreter (`libz.so.1` is not resolvable inside the
-  chroot), so every `TestCinderProbeIntegration` probe test fails (8 tests).
-  Even with a working snapshot, some hostile probes have been observed
-  classified `benign` / `ALLOW`. On GitHub-hosted runners the sandbox
-  admission check fails, so these tests skip and CI stays green without
-  exercising them.
-- **Fail-open receipt.** When the snapshot interpreter cannot start, the probe
-  payload never executes, but the gate still records `ALLOW` with zero
-  uncertainty. This contradicts invariant 5 and is not yet fixed. Do not rely
-  on Incident Gate verdicts.
+  cannot start its interpreter (the library closure loses SONAME symlinks, so
+  e.g. `libexpat.so.1` / `libz.so.1` are not resolvable inside the chroot);
+  the shared-library resolution defect itself is still open. On such hosts
+  `TestCinderProbeIntegration` now skips with the observation failure class
+  reported, keeping "not admitted" separate from execution coverage. On
+  GitHub-hosted runners the sandbox admission check fails, so these tests
+  skip and CI stays green without exercising them.
+- **Incomplete execution evidence.** Fixed: the legacy reducer separates a
+  completed payload observation from interpreter-startup,
+  snapshot/library-load, admission, and observer failure. Incomplete
+  observation now records `payload_observation_incomplete` and maps to
+  `EVALUATION_INCOMPLETE` with full uncertainty, a bounded loader diagnostic,
+  and a non-success exit; `ALLOW` requires a completed observation
+  (`observation.status == COMPLETE` in the signed receipt). Remaining caveat:
+  some hostile probes were observed classified `benign` / `ALLOW` on runs
+  where the payload did execute, so detector-rule coverage on the deprecated
+  profile still needs a supported host to re-verify.
 - **File permissions.** Two `tests/firecracker/` tests reject group-writable
   source files. Clone with `umask 022`.
 

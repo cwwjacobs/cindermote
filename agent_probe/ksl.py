@@ -16,8 +16,12 @@ def build_host_lifecycle(
     road_frozen_hash: str,
     runtime_result: AgentProbeRuntimeResult | None,
     admission_failed_before_launch: bool = False,
+    runtime_failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if runtime_result is None:
+        failure_code = "PREFLIGHT_FAILED" if admission_failed_before_launch else "RUNTIME_NOT_STARTED"
+        if runtime_failure is not None:
+            failure_code = str(runtime_failure["code"])
         body = {
             "lifecycle_version": "cindermote.host-lifecycle/v1",
             "job_id": job_id,
@@ -33,8 +37,27 @@ def build_host_lifecycle(
             "ciphertext_persisted": False,
             "egress_witness_complete": False,
             "cleanup_verified": bool(admission_failed_before_launch),
-            "failure_code": "PREFLIGHT_FAILED" if admission_failed_before_launch else "RUNTIME_NOT_STARTED",
+            "failure_code": failure_code,
         }
+        if runtime_failure is not None:
+            # The runtime raised at the orchestration boundary: post-launch
+            # cleanup state is unknown, so only the provable claims stand —
+            # the API-key buffer was zeroed in the runner's finally block.
+            body["launch_attempted"] = True
+            body["processes_reaped"] = False
+            body["cgroup_removed"] = False
+            body["network_namespace_removed"] = False
+            body["ram_jail_removed"] = False
+            body["egress_worker_reaped"] = False
+            body["runtime_failure"] = {
+                "exception": str(runtime_failure["exception"])[:64],
+                "errno": (
+                    runtime_failure["errno"]
+                    if isinstance(runtime_failure["errno"], int)
+                    and not isinstance(runtime_failure["errno"], bool)
+                    else None
+                ),
+            }
     else:
         purge = runtime_result.purge
         telemetry = runtime_result.egress_telemetry
@@ -68,6 +91,7 @@ def build_road_walked(
     manifest: dict[str, Any],
     road_frozen_hash: str,
     runtime_result: AgentProbeRuntimeResult | None,
+    runtime_failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if runtime_result is None or runtime_result.guest_result is None:
         guest_status = "EVALUATION_INCOMPLETE"
@@ -86,7 +110,12 @@ def build_road_walked(
         evidence_complete = False
         events: list[dict[str, Any]] = []
         egress = {}
-        failure_code = "PREFLIGHT_FAILED" if runtime_result is None else runtime_result.failure_code
+        if runtime_result is None:
+            failure_code = (
+                str(runtime_failure["code"]) if runtime_failure is not None else "PREFLIGHT_FAILED"
+            )
+        else:
+            failure_code = runtime_result.failure_code
     else:
         result = runtime_result.guest_result
         guest_status = result["status_code"]
@@ -139,6 +168,16 @@ def build_road_walked(
         "evidence_complete": evidence_complete,
         "runtime_failure_code": failure_code,
     }
+    if runtime_failure is not None:
+        walked["runtime_failure"] = {
+            "exception": str(runtime_failure["exception"])[:64],
+            "errno": (
+                runtime_failure["errno"]
+                if isinstance(runtime_failure["errno"], int)
+                and not isinstance(runtime_failure["errno"], bool)
+                else None
+            ),
+        }
     return walked
 
 

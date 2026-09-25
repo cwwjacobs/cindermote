@@ -354,6 +354,7 @@ class HostTracer:
     namespace_escape: bool = False
     trace_error: str | None = None
     exit_codes: dict[int, int] = field(default_factory=dict)
+    exec_completed_pids: set[int] = field(default_factory=set)
 
     @staticmethod
     def _options() -> int:
@@ -566,6 +567,11 @@ class HostTracer:
                 self.in_syscall[child_pid] = False
                 _ptrace(PTRACE_SYSCALL, pid, 0, 0)
                 return
+
+            if event == PTRACE_EVENT_EXEC:
+                # A completed execve(2): entry alone proves nothing, since a
+                # failed execve raises before this event fires.
+                self.exec_completed_pids.add(pid)
 
             if stop_signal == (signal.SIGTRAP | 0x80):
                 registers = _getregs(pid)

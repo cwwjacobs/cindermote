@@ -111,6 +111,18 @@ def apply_scoring_matrix(
         reason = "uncertain_classification"
 
     human_override = _decision_for_job(_load_override(override_json), job_id)
+    if evidence.get("payload_observation_incomplete", 0) > 0:
+        # The payload observation never completed (interpreter startup,
+        # snapshot/library load, or observer failure). Missing evidence is not
+        # classifiable; no authority may promote it to a verdict.
+        return {
+            "policy_gate_decision": "EVALUATION_INCOMPLETE",
+            "policy_gate_reason": "payload_observation_incomplete",
+            "human_gate_override": human_override,
+            "final_decision": "EVALUATION_INCOMPLETE",
+            "final_authority": "fail_closed_incomplete_observation",
+            "override_blocked_by_fail_closed": human_override == "ALLOW",
+        }
     fail_closed = any(evidence.get(rule_id, 0) > 0 for rule_id in UNOVERRIDABLE_RULES)
     if fail_closed:
         final_decision = "DENY"
