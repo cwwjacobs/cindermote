@@ -41,26 +41,40 @@ which ones are exercised today.
 
 ## Known issues
 
-- **Incident Gate results.** The legacy namespace profile builds a golden
-  rootfs snapshot from the host on first use (`policy/golden-snapshot.tar.gz`,
-  not distributed). On Debian/Ubuntu multiarch layouts the built snapshot
-  cannot start its interpreter (the library closure loses SONAME symlinks, so
-  e.g. `libexpat.so.1` / `libz.so.1` are not resolvable inside the chroot);
-  the shared-library resolution defect itself is still open. On such hosts
-  `TestCinderProbeIntegration` now skips with the observation failure class
-  reported, keeping "not admitted" separate from execution coverage. On
-  GitHub-hosted runners the sandbox admission check fails, so these tests
-  skip and CI stays green without exercising them.
+- **Incident Gate results.** Fixed on the supported host: the snapshot
+  bootstrap dropped SONAME symlinks from the library closure (so e.g.
+  `libexpat.so.1` was not resolvable inside the chroot) and mirrored the
+  stdlib at its host-absolute path, which the chrooted interpreter does not
+  search. Both placements are fixed, and `TestCinderProbeIntegration` now
+  executes for real where the sandbox admits (13/13 on the KSL-08 validation
+  host): all hostile probes DENY, benign ALLOW only from a completed
+  observation. The seccomp filter now denies Internet-family socket creation
+  with EPERM under observation instead of killing the payload at its first
+  attempt (namespace-class syscalls still kill), so multi-stage probes
+  surface every stage; the `__exec__` tainted-output tripwire is detected.
+  On hosts where the sandbox cannot start the payload interpreter, the suite
+  still skips with the observation failure class reported, keeping "not
+  admitted" separate from execution coverage; GitHub-hosted runners skip at
+  the admission check as before.
 - **Incomplete execution evidence.** Fixed: the legacy reducer separates a
   completed payload observation from interpreter-startup,
   snapshot/library-load, admission, and observer failure. Incomplete
   observation now records `payload_observation_incomplete` and maps to
   `EVALUATION_INCOMPLETE` with full uncertainty, a bounded loader diagnostic,
   and a non-success exit; `ALLOW` requires a completed observation
-  (`observation.status == COMPLETE` in the signed receipt). Remaining caveat:
-  some hostile probes were observed classified `benign` / `ALLOW` on runs
-  where the payload did execute, so detector-rule coverage on the deprecated
-  profile still needs a supported host to re-verify.
+  (`observation.status == COMPLETE` in the signed receipt).
+- **Supported-host Firecracker E2E.** First real execution on the KSL-08
+  validation host (`VALIDATION.md` 2026-09-25): microVM boots, guest agent
+  runs, teardown verified, signed receipt records `COMPLETE` execution.
+  Without a live provider credential the model leg ends in guest
+  `PROVIDER_FAILURE` and the gate is honestly `EVALUATION_INCOMPLETE`; a live
+  credential completes the run with no code change. The browser-profile KVM
+  gate still needs an operator-run public HTTPS fixture. Note for operators:
+  the privilege-separated egress worker drops to a dedicated uid before
+  lazily importing the interpreter's stdlib, so the stdlib path must be
+  traversable by that uid (a mode-0700 home directory above a non-system
+  Python breaks it); preflight reports readiness only when the whole chain
+  works.
 - **File permissions.** Two `tests/firecracker/` tests reject group-writable
   source files. Clone with `umask 022`.
 
