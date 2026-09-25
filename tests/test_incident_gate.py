@@ -754,67 +754,8 @@ _BENIGN_SOURCE = "print('observation-complete')\n"
 
 
 def _elf_soname(path: Path) -> str | None:
-    """Read DT_SONAME from an ELF64 shared object (mirrors detonate._elf_links)."""
-    try:
-        data = path.read_bytes()
-    except (OSError, ValueError):
-        return None
-    if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
-        return None
-    try:
-        header = struct.unpack_from("<16sHHIQQQIHHHHHH", data, 0)
-    except struct.error:
-        return None
-    phoff, phentsize, phnum = header[5], header[9], header[10]
-    segments: list[tuple[int, int, int, int]] = []
-    dynamic: tuple[int, int] | None = None
-    for index in range(phnum):
-        offset = phoff + index * phentsize
-        try:
-            p_type, _, p_offset, p_vaddr, _, p_filesz, _, _ = struct.unpack_from(
-                "<IIQQQQQQ", data, offset
-            )
-        except struct.error:
-            return None
-        segments.append((p_type, p_offset, p_vaddr, p_filesz))
-        if p_type == 2:  # PT_DYNAMIC
-            dynamic = (p_offset, p_filesz)
-    if dynamic is None:
-        return None
-    soname_relative: int | None = None
-    strtab_address: int | None = None
-    strtab_size = 0
-    start, size = dynamic
-    for offset in range(start, min(start + size, len(data)), 16):
-        try:
-            tag, value = struct.unpack_from("<QQ", data, offset)
-        except struct.error:
-            break
-        if tag == 0:
-            break
-        if tag == 14:  # DT_SONAME
-            soname_relative = value
-        elif tag == 5:  # DT_STRTAB
-            strtab_address = value
-        elif tag == 10:  # DT_STRSZ
-            strtab_size = value
-    if soname_relative is None or strtab_address is None:
-        return None
-    strtab_offset = None
-    for p_type, p_offset, p_vaddr, p_filesz in segments:
-        if p_type == 1 and p_vaddr <= strtab_address < p_vaddr + p_filesz:
-            strtab_offset = p_offset + (strtab_address - p_vaddr)
-            break
-    if strtab_offset is None:
-        return None
-    maximum = min(len(data), strtab_offset + (strtab_size or len(data)))
-    begin = strtab_offset + soname_relative
-    if begin >= maximum:
-        return None
-    end = data.find(b"\0", begin, maximum)
-    if end == -1:
-        return None
-    return data[begin:end].decode("utf-8", "replace")
+    """Read DT_SONAME via the production parser used by snapshot bootstrap."""
+    return incident_gate_module.detonate_module._elf_soname(path)
 
 
 def _build_rootfs_tar(target: Path, populate) -> Path:
@@ -870,6 +811,58 @@ def _build_runnable_snapshot(workspace: Path) -> Path | None:
     with tarfile.open(target, "w:gz") as archive:
         archive.add(extract_dir, arcname=".", recursive=True)
     return target
+
+
+class TestSnapshotLibraryClosure(unittest.TestCase):
+    """The snapshot bootstrap must place libraries where the loader looks."""
+
+    def test_elf_soname_reads_loader_lookup_name(self):
+        detonate = incident_gate_module.detonate_module
+        libc = detonate._resolve_library("libc.so.6", Path("/usr/bin"))
+        if libc is None:
+            self.skipTest("no libc.so.6 on this host")
+        self.assertEqual(detonate._elf_soname(libc), "libc.so.6")
+
+    def test_copy_binary_closure_places_soname_aliases(self):
+        detonate = incident_gate_module.detonate_module
+        true_binary = shutil.which("true")
+        if true_binary is None:
+            self.skipTest("no true binary on this host")
+        true_path = Path(true_binary).resolve()
+        _interpreter, needed = detonate._elf_links(true_path)
+        if not needed:
+            self.skipTest("true is statically linked on this host")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            detonate._copy_binary_closure(true_path, root, Path("usr/bin/true"))
+            # Every DT_NEEDED lookup name must resolve inside the rootfs,
+            # either as the copied file itself or as a SONAME symlink to it.
+            missing = [name for name in needed if not _rootfs_resolves(root, name)]
+            self.assertEqual(missing, [])
+
+    def test_soname_alias_is_bounded_and_relative(self):
+        detonate = incident_gate_module.detonate_module
+        libc = detonate._resolve_library("libc.so.6", Path("/usr/bin"))
+        if libc is None:
+            self.skipTest("no libc.so.6 on this host")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            detonate._copy_binary_closure(libc, root)
+            soname = detonate._elf_soname(libc)
+            candidates = list(root.rglob(soname)) if soname else []
+            self.assertTrue(candidates)
+            link = candidates[0]
+            if link.is_symlink():
+                target = link.readlink()
+                self.assertFalse(target.is_absolute())
+                self.assertNotIn("..", target.parts)
+
+
+def _rootfs_resolves(root: Path, name: str) -> bool:
+    return any(
+        candidate.name == name and (candidate.is_file() or candidate.is_symlink())
+        for candidate in root.rglob(name)
+    )
 
 
 @unittest.skipIf(SKIP_INTEGRATION, SKIP_REASON)

@@ -582,6 +582,90 @@ def _elf_links(path: Path) -> tuple[str | None, list[str]]:
     return interpreter, names
 
 
+def _elf_soname(path: Path) -> str | None:
+    """Read DT_SONAME from an ELF64 shared object without external tools."""
+    try:
+        data = path.read_bytes()
+    except (OSError, ValueError):
+        return None
+    if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+        return None
+    try:
+        header = struct.unpack_from("<16sHHIQQQIHHHHHH", data, 0)
+    except struct.error:
+        return None
+    phoff, phentsize, phnum = header[5], header[9], header[10]
+    segments: list[tuple[int, int, int, int]] = []
+    dynamic: tuple[int, int] | None = None
+    for index in range(phnum):
+        offset = phoff + index * phentsize
+        try:
+            p_type, _, p_offset, p_vaddr, _, p_filesz, _, _ = struct.unpack_from(
+                "<IIQQQQQQ", data, offset
+            )
+        except struct.error:
+            return None
+        segments.append((p_type, p_offset, p_vaddr, p_filesz))
+        if p_type == 2:  # PT_DYNAMIC
+            dynamic = (p_offset, p_filesz)
+    if dynamic is None:
+        return None
+    soname_relative: int | None = None
+    strtab_address: int | None = None
+    strtab_size = 0
+    start, size = dynamic
+    for offset in range(start, min(start + size, len(data)), 16):
+        try:
+            tag, value = struct.unpack_from("<QQ", data, offset)
+        except struct.error:
+            break
+        if tag == 0:
+            break
+        if tag == 14:  # DT_SONAME
+            soname_relative = value
+        elif tag == 5:  # DT_STRTAB
+            strtab_address = value
+        elif tag == 10:  # DT_STRSZ
+            strtab_size = value
+    if soname_relative is None or strtab_address is None:
+        return None
+    strtab_offset = None
+    for p_type, p_offset, p_vaddr, p_filesz in segments:
+        if p_type == 1 and p_vaddr <= strtab_address < p_vaddr + p_filesz:
+            strtab_offset = p_offset + (strtab_address - p_vaddr)
+            break
+    if strtab_offset is None:
+        return None
+    maximum = min(len(data), strtab_offset + (strtab_size or len(data)))
+    begin = strtab_offset + soname_relative
+    if begin >= maximum:
+        return None
+    end = data.find(b"\0", begin, maximum)
+    if end == -1:
+        return None
+    return data[begin:end].decode("utf-8", "replace")
+
+
+def _alias_soname(source: Path, copied: Path) -> None:
+    """Alias a copied shared library under its SONAME beside the copy.
+
+    The closure copies each library under its resolved file name (e.g.
+    libexpat.so.1.8.7), but the dynamic loader searches by SONAME
+    (libexpat.so.1).  Without the alias the chrooted interpreter dies in
+    the loader before the payload runs.  The SONAME is host-supplied build
+    input, but it is still bounded before it enters the guest rootfs.
+    """
+    soname = _elf_soname(source)
+    if not soname or soname == copied.name:
+        return
+    if "/" in soname or soname in {".", ".."} or len(soname) > 128:
+        return
+    link = copied.parent / soname
+    if link.exists() or link.is_symlink():
+        return
+    link.symlink_to(copied.name)
+
+
 def _resolve_library(name: str, origin: Path) -> Path | None:
     candidates = [
         origin,
@@ -610,10 +694,12 @@ def _copy_binary_closure(binary: Path, root: Path, destination: Path | None = No
         source, target = queue.pop()
         if source in seen:
             if target is not None and not (root / target).exists():
-                _copy_into_root(source, root, target)
+                copied = _copy_into_root(source, root, target)
+                _alias_soname(source, copied)
             continue
         seen.add(source)
-        _copy_into_root(source, root, target)
+        copied = _copy_into_root(source, root, target)
+        _alias_soname(source, copied)
         interpreter, libraries = _elf_links(source)
         if interpreter:
             interpreter_path = Path(interpreter)
@@ -671,11 +757,19 @@ def bootstrap_snapshot() -> dict:
         python_binary = Path(sys.executable).resolve()
         _copy_binary_closure(python_binary, root, Path("usr/bin/python3"))
         stdlib = Path(sysconfig.get_path("stdlib")).resolve()
-        stdlib_target = root / Path(str(stdlib).lstrip("/"))
+        # The payload interpreter runs as /usr/bin/python3 inside the chroot
+        # and derives its stdlib location from that path (prefix /usr), not
+        # from the host install layout.  Place the stdlib where the chrooted
+        # interpreter computes it; fall back to mirroring the host layout
+        # only when the stdlib is outside the interpreter's base prefix.
+        base_prefix = Path(sys.base_prefix).resolve()
+        try:
+            stdlib_target = root / "usr" / stdlib.relative_to(base_prefix)
+        except ValueError:
+            stdlib_target = root / Path(str(stdlib).lstrip("/"))
         shutil.copytree(stdlib, stdlib_target, symlinks=False, ignore=_snapshot_ignore)
         for extension in stdlib_target.rglob("*.so"):
-            relative_source = Path("/") / extension.relative_to(root)
-            original = Path(str(relative_source))
+            original = stdlib / extension.relative_to(stdlib_target)
             if original.exists():
                 _copy_binary_closure(original, root)
 
