@@ -56,6 +56,7 @@ PR_SET_SECCOMP = 22
 SECCOMP_MODE_FILTER = 2
 SECCOMP_RET_KILL_PROCESS = 0x80000000
 SECCOMP_RET_TRAP = 0x00030000
+SECCOMP_RET_ERRNO = 0x00050000
 SECCOMP_RET_ALLOW = 0x7FFF0000
 AUDIT_ARCH_X86_64 = 0xC000003E
 
@@ -182,18 +183,21 @@ def seccomp_instructions() -> list[tuple[int, int, int, int]]:
         _stmt(BPF_LD_W_ABS, 0),
     ]
 
-    # socket(domain, ...): trap Internet and packet families; AF_UNIX remains
-    # available for the interpreter runtime.
+    # socket(domain, ...): deny Internet and packet families with EPERM while
+    # the ptrace observer records the attempt; the payload then continues
+    # under observation so multi-stage behavior stays visible.  A kill here
+    # would end every probe at its first socket and blind the later stages.
+    # AF_UNIX remains available for the interpreter runtime.
     instructions.extend(
         [
             _jump(BPF_JMP_JEQ_K, SYS_SOCKET, 0, 8),
             _stmt(BPF_LD_W_ABS, 16),
             _jump(BPF_JMP_JEQ_K, socket.AF_INET, 0, 1),
-            _stmt(BPF_RET_K, SECCOMP_RET_TRAP),
+            _stmt(BPF_RET_K, SECCOMP_RET_ERRNO | errno.EPERM),
             _jump(BPF_JMP_JEQ_K, socket.AF_INET6, 0, 1),
-            _stmt(BPF_RET_K, SECCOMP_RET_TRAP),
+            _stmt(BPF_RET_K, SECCOMP_RET_ERRNO | errno.EPERM),
             _jump(BPF_JMP_JEQ_K, socket.AF_PACKET, 0, 1),
-            _stmt(BPF_RET_K, SECCOMP_RET_TRAP),
+            _stmt(BPF_RET_K, SECCOMP_RET_ERRNO | errno.EPERM),
             _stmt(BPF_LD_W_ABS, 0),
         ]
     )

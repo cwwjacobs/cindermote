@@ -90,6 +90,7 @@ INSTRUCTION_PATTERNS = (
     b"system: you are now",
     b"ignore previous",
     b"disregard",
+    b"__exec__",
 )
 
 CANARY_PATHS = {
