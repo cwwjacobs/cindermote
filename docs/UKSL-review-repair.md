@@ -44,3 +44,20 @@ Local bounded regression PASS; full host execution remains CI/host-dependent.
 The separately invoked root job-image contract also cannot complete here:
 mkfs.ext4 exits 1 under this container. No production/test bypass was introduced;
 normal CI's root job remains the required verification for that host operation.
+
+## Cindermote #2 local Stage 1 amendment
+First audit exposed a fixture issue: preflight also calls _mount_for for cgroups.
+Isolate _cgroup_check in the mount regression fixture so each test controls only
+the two mapped runtime mount inspections. No production scope amendment.
+
+## Cindermote #2 Stage 2 / Stage 3 receipt
+Integrated published #1 commit 9ac3297d2249a32e836995398b4641d6e2304213
+onto #2 without rewriting either PR history. Mount proof booleans start False
+and become true only after each successful inspection. Both independent OSError
+branches return not-ready; positive two-mount and missing-noswap checks pass.
+Focused combined suite: 59 passed, 18 skipped, 21 subtests; diff check clean.
+#1 published CI passed both push/PR runs, including the host contracts that
+could not execute in this local container. #2 will run those same gates anew.
+
+Full locally runnable #2 suite: 247 passed, 24 skipped, 2 host-dependent tests
+deselected (ptrace and root image contract as recorded above), 129 subtests.

@@ -774,8 +774,11 @@ def preflight_firecracker(
         tun_ok = Path("/dev/net/tun").exists() and os.access("/dev/net/tun", os.R_OK | os.W_OK)
         checks.append(PreflightCheck("tun", tun_ok, True, "/dev/net/tun rw" if tun_ok else "/dev/net/tun unavailable"))
 
+    runtime_noswap_proven = False
+    jailer_noswap_proven = False
     try:
         filesystem, options, mountpoint = _mount_for(runtime)
+        runtime_noswap_proven = filesystem == "tmpfs" and "noswap" in options
         runtime_ok = (
             runtime.is_dir()
             and filesystem == "tmpfs"
@@ -819,6 +822,7 @@ def preflight_firecracker(
         )
     try:
         jailer_filesystem, jailer_options, jailer_mountpoint = _mount_for(runtime / "jailer")
+        jailer_noswap_proven = jailer_filesystem == "tmpfs" and "noswap" in jailer_options
         jailer_runtime_ok = (
             (runtime / "jailer").is_dir()
             and jailer_filesystem == "tmpfs"
@@ -856,12 +860,7 @@ def preflight_firecracker(
     # /proc/self/mounts — the kernel rejects unknown tmpfs options, so a
     # mounted noswap tmpfs is direct evidence.  Admit any kernel that
     # proves the control; keep reporting the target family alongside.
-    noswap_proven = (
-        filesystem == "tmpfs"
-        and "noswap" in options
-        and jailer_filesystem == "tmpfs"
-        and "noswap" in jailer_options
-    )
+    noswap_proven = runtime_noswap_proven and jailer_noswap_proven
     checks.append(
         PreflightCheck(
             "competition_host_kernel",
