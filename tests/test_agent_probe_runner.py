@@ -158,3 +158,26 @@ def test_unexpected_runtime_exception_zeroes_key_and_persists_signed_failure_rec
     road_walked = json.loads(Path(result.road_walked_path).read_text(encoding="utf-8"))
     assert road_walked["runtime_failure_code"] == "RUNTIME_UNEXPECTED_ERROR"
     assert road_walked["runtime_failure"] == {"exception": "RuntimeError", "errno": None}
+
+
+def test_read_exact_key_accepts_raw_key_ending_in_whitespace(tmp_path: Path) -> None:
+    from cindermote.agent_probe.runner import AgentProbeError, _read_exact_key
+
+    key_path = tmp_path / "key"
+    raw_key = b"k" * 31 + b" "
+    key_path.write_bytes(raw_key)
+    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}) == raw_key
+
+    key_path.write_bytes(b"n" * 32 + b"\n")
+    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}) == b"n" * 32
+
+    key_path.write_bytes(b"ab" * 48 + b"\n")
+    assert _read_exact_key(key_path, name="observer signing key", lengths={48}) == bytes.fromhex("ab" * 48)
+
+    key_path.write_bytes(b"short")
+    try:
+        _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64})
+    except AgentProbeError:
+        pass
+    else:
+        raise AssertionError("invalid-length key must be rejected")

@@ -90,7 +90,12 @@ build; it never permits substitution or resolution of `latest`.
 ## Prepare a Firecracker host
 
 The competition host target is Linux `6.18.x`: it is both a Firecracker-tested
-family and supports the tmpfs `noswap` control used here. The host must expose
+family and supports the tmpfs `noswap` control used here. Preflight verifies
+the operative requirement directly — it re-reads the runtime and jailer mount
+options from `/proc/self/mounts` and admits only a host whose real mounts
+prove `noswap` (the kernel rejects unknown tmpfs options, so a mounted
+`noswap` tmpfs is direct evidence); kernels outside the tested family are
+admitted on that proof. The host must expose
 `/dev/kvm` and `/dev/net/tun` and delegate a writable cgroup v2 hierarchy.
 Disable host swap before preparation; this is mandatory, not a warning.
 

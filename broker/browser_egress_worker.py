@@ -407,7 +407,12 @@ def _validate_ready(
     worker_gid: int,
 ) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != READY_KEYS:
-        raise BrowserEgressWorkerProtocolError("worker readiness shape changed")
+        detail = (
+            f"keys={sorted(value)} code={value.get('code')}"
+            if isinstance(value, dict)
+            else f"type={type(value).__name__}"
+        )
+        raise BrowserEgressWorkerProtocolError(f"worker readiness shape changed ({detail})")
     if (
         value["type"] != "ready"
         or value["protocol_version"] != PROTOCOL_VERSION

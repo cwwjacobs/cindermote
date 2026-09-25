@@ -31,6 +31,34 @@ fakeroot -i "$FAKEROOT_STATE" -- e2fsdroid \
   -T "$SOURCE_DATE_EPOCH" \
   -f "$SOURCE_TREE" \
   "$ROOTFS"
+
+# This e2fsdroid build does not preserve host executable bits: without an
+# fs_config (which requires an entry for every file) it writes 0644 for
+# every regular file, leaving the guest's init, shell, interpreter, and
+# helpers non-executable (kernel init fails with EACCES).  Restore the
+# executable bit inode-by-inode for every file that carries one in the
+# extracted tree, the same attestation style as chrome-sandbox below.
+find "$SOURCE_TREE" -type f -perm /111 -printf '%P\n' | sort \
+  | while IFS= read -r relative; do
+      printf 'set_inode_field /%s mode 0100755\n' "$relative"
+    done >"${WORK_DIR}/exec-fixups.debugfs"
+debugfs -w -f "${WORK_DIR}/exec-fixups.debugfs" "$ROOTFS" >/dev/null 2>&1
+printf '%s\n' \
+  /usr/sbin/cindermote-init \
+  /usr/bin/dash \
+  /usr/bin/python3.11 \
+  /usr/bin/mount \
+  /usr/bin/mkdir \
+  /usr/bin/ip \
+  >"${WORK_DIR}/required-executables"
+while IFS= read -r executable; do
+  debugfs -R "stat ${executable}" "$ROOTFS" >"${WORK_DIR}/executable.stat" 2>/dev/null
+  grep -Eq '\bType:[[:space:]]+regular[[:space:]]+Mode:[[:space:]]+0755\b' \
+    "${WORK_DIR}/executable.stat" || {
+      echo "required guest executable lost its exec bit: ${executable}" >&2
+      exit 2
+    }
+done <"${WORK_DIR}/required-executables"
 printf '%s\n' \
   "set_super_value hash_seed ${DIRECTORY_HASH_SEED}" \
   'close -a' \

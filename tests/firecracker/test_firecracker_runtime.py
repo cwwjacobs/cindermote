@@ -508,6 +508,43 @@ class FirecrackerRuntimePrimitiveTests(unittest.TestCase):
         self.assertEqual([check.name for check in report.checks], ["asset_lock"])
         self.assertTrue(report.checks[0].required)
 
+    def test_mount_inspection_failures_return_not_ready(self) -> None:
+        good = ("tmpfs", {"rw", "nosuid", "nodev", "noswap"}, Path("/run"))
+        for failing_call in (0, 1):
+            results = [good, good]
+            results[failing_call] = OSError("mount inspection denied")
+            with self.subTest(failing_call=failing_call), tempfile.TemporaryDirectory() as temporary:
+                with (mock.patch.object(runtime, "_mount_for", side_effect=results) as inspect,
+                      mock.patch.object(runtime, "_cgroup_check", return_value=(True, "test"))):
+                    report = runtime.preflight_firecracker(
+                        profile="code", cache_dir=Path(temporary) / "cache",
+                        runtime_root=Path(temporary) / "run",
+                        cgroup_root=Path(temporary) / "cgroup",
+                    )
+                checks = {check.name: check for check in report.checks}
+                self.assertEqual(inspect.call_count, 2)
+                self.assertFalse(report.ready)
+                self.assertFalse(checks["competition_host_kernel"].ok)
+                failed_name = "ram_runtime" if failing_call == 0 else "ram_jailer_runtime"
+                self.assertFalse(checks[failed_name].ok)
+                self.assertIn("inspection unavailable", checks[failed_name].detail)
+
+    def test_kernel_mount_proof_requires_both_noswap_mounts(self) -> None:
+        for second_options, expected in (({"rw", "noswap"}, True), ({"rw"}, False)):
+            with self.subTest(second_options=second_options), tempfile.TemporaryDirectory() as temporary:
+                with (mock.patch.object(runtime, "_cgroup_check", return_value=(True, "test")),
+                      mock.patch.object(runtime, "_mount_for", side_effect=[
+                    ("tmpfs", {"rw", "noswap"}, Path("/run")),
+                    ("tmpfs", second_options, Path("/run/jailer")),
+                ])):
+                    report = runtime.preflight_firecracker(
+                        profile="code", cache_dir=Path(temporary) / "cache",
+                        runtime_root=Path(temporary) / "run",
+                        cgroup_root=Path(temporary) / "cgroup",
+                    )
+                checks = {check.name: check for check in report.checks}
+                self.assertEqual(checks["competition_host_kernel"].ok, expected)
+
     def test_browser_probe_never_falls_back_when_firecracker_is_unready(self) -> None:
         called = False
 

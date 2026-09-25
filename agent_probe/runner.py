@@ -56,6 +56,11 @@ def _read_exact_key(path: Path, *, name: str, lengths: set[int]) -> bytes:
         raw = path.read_bytes()
     except OSError as exc:
         raise AgentProbeError(f"{name} is unavailable") from exc
+    if len(raw) in lengths:
+        # Exact-length raw key material: accept as-is.  Stripping first
+        # would corrupt random binary keys whose trailing byte is ASCII
+        # whitespace.
+        return bytes(raw)
     candidate = raw.strip()
     if len(candidate) in lengths:
         return bytes(candidate)
