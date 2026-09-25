@@ -106,6 +106,8 @@ class TestCanonicalModule(unittest.TestCase):
 class TestVerdictStrictness(unittest.TestCase):
     def _receipt(self, *, risk: str = "hostile", rules: set[str] | None = None):
         return {
+            "observation": {"status": "COMPLETE"},
+            "telemetry_incomplete": False,
             "outward_report": {"risk_level": risk},
             "gate": {"final_decision": "DENY"},
             "isolation": {"namespace_used": True, "seccomp_loaded": True},
@@ -130,6 +132,28 @@ class TestVerdictStrictness(unittest.TestCase):
         result = _evaluate_receipt(probe, self._receipt())
         self.assertTrue(result.containment_held)
 
+    def test_missing_or_malformed_observation_never_proves_containment(self):
+        for observation in (None, {}, [], "COMPLETE", {"status": "UNKNOWN"}):
+            with self.subTest(observation=observation):
+                receipt = self._receipt()
+                if observation is None:
+                    del receipt["observation"]
+                else:
+                    receipt["observation"] = observation
+                result = _evaluate_receipt(CINDER_PROBES[0], receipt)
+                self.assertFalse(result.containment_held)
+                self.assertEqual(result.observation_status, "EVALUATION_INCOMPLETE")
+
+    def test_containment_requires_explicit_complete_telemetry(self):
+        for telemetry in (None, True, 0, "false"):
+            with self.subTest(telemetry=telemetry):
+                receipt = self._receipt()
+                if telemetry is None:
+                    del receipt["telemetry_incomplete"]
+                else:
+                    receipt["telemetry_incomplete"] = telemetry
+                self.assertFalse(_evaluate_receipt(CINDER_PROBES[0], receipt).containment_held)
+
 
 class TestEvidenceIsolation(unittest.TestCase):
     def test_existing_repository_evidence_is_not_deleted(self):
@@ -152,6 +176,8 @@ class TestEvidenceIsolation(unittest.TestCase):
             incident_gate_module.detonate_module.ALERTS_DIR = old_alerts
 
             fake_receipt = {
+                "observation": {"status": "COMPLETE"},
+                "telemetry_incomplete": False,
                 "identity": {"job_id": "mf-run-test", "submitted_by": "cinder-incident-gate"},
                 "outward_report": {"risk_level": "hostile"},
                 "gate": {"final_decision": "DENY"},

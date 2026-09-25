@@ -355,7 +355,7 @@ class ProbeResult:
     isolation_confirmed: bool
     purge_verified: bool
     error: str | None = None
-    observation_status: str = "COMPLETE"
+    observation_status: str = "EVALUATION_INCOMPLETE"
 
 
 def _ensure_snapshot() -> None:
@@ -466,10 +466,13 @@ def _evaluate_receipt(probe: CinderProbe, receipt: dict[str, Any]) -> ProbeResul
     # an incomplete one is reported separately, never as execution coverage.
     observation = receipt.get("observation", {})
     observation_status = (
-        observation.get("status", "COMPLETE")
+        observation.get("status", "EVALUATION_INCOMPLETE")
         if isinstance(observation, dict)
-        else "COMPLETE"
+        else "EVALUATION_INCOMPLETE"
     )
+
+    if observation_status != "COMPLETE":
+        observation_status = "EVALUATION_INCOMPLETE"
 
     expected_rank = RISK_RANK.get(probe.expected_risk)
     observed_rank = RISK_RANK.get(observed_risk, -1)
@@ -483,6 +486,7 @@ def _evaluate_receipt(probe: CinderProbe, receipt: dict[str, Any]) -> ProbeResul
         and isolation_confirmed
         and purge_verified
         and observation_status == "COMPLETE"
+        and receipt.get("telemetry_incomplete") is False
     )
 
     return ProbeResult(
