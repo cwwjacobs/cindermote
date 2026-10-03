@@ -24,7 +24,6 @@ import shutil
 import sys
 import tempfile
 import threading
-import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -590,46 +589,61 @@ def _file_sha256(path: Path) -> str:
 # Doctor — preflight check using the real infrastructure
 # ---------------------------------------------------------------------------
 
+def _kvm_usable() -> bool:
+    return os.access("/dev/kvm", os.R_OK | os.W_OK)
+
+
 def run_doctor() -> dict[str, Any]:
-    """Check system readiness using real infrastructure checks."""
+    """Check system readiness using real infrastructure checks.
+
+    ``overall_status`` is one of:
+
+    * ``READY`` - every check passes, including the isolation-strength controls
+      (root with a real cgroup v2 hierarchy, KVM, a ready Firecracker runtime).
+    * ``DEGRADED`` - the namespace gate can run, but at least one
+      isolation-strength control is missing. Receipts record the degraded mode.
+    * ``FAIL_PREREQUISITES_MISSING`` - the gate cannot run on this host.
+    """
     checks: list[dict[str, Any]] = []
     ready = True
+    euid = os.geteuid()
+
+    def add(name: str, ok: bool, detail: str, *, required: bool = True) -> None:
+        nonlocal ready
+        checks.append({"name": name, "ok": ok, "required": required, "detail": detail})
+        if required and not ok:
+            ready = False
 
     # 1. Snapshot availability
     snapshot_ok = SNAPSHOT_PATH.exists()
     manifest_ok = SNAPSHOT_MANIFEST_PATH.exists()
-    checks.append({
-        "name": "golden_snapshot",
-        "ok": snapshot_ok and manifest_ok,
-        "detail": f"snapshot={SNAPSHOT_PATH.exists()}, manifest={SNAPSHOT_MANIFEST_PATH.exists()}",
-    })
-    if not (snapshot_ok and manifest_ok):
-        ready = False
+    add(
+        "golden_snapshot",
+        snapshot_ok and manifest_ok,
+        f"snapshot={SNAPSHOT_PATH.exists()}, manifest={SNAPSHOT_MANIFEST_PATH.exists()}",
+    )
 
     # 2. Snapshot integrity
     if snapshot_ok and manifest_ok:
         try:
             verify_snapshot()
-            checks.append({"name": "snapshot_integrity", "ok": True, "detail": "verified"})
+            add("snapshot_integrity", True, "verified")
         except Exception as exc:
-            checks.append({"name": "snapshot_integrity", "ok": False, "detail": str(exc)})
-            ready = False
+            add("snapshot_integrity", False, str(exc))
 
-    # 3. KVM availability
-    kvm_ok = os.access("/dev/kvm", os.R_OK | os.W_OK)
-    checks.append({
-        "name": "kvm",
-        "ok": True,  # not required for namespace isolation mode
-        "detail": f"/dev/kvm {'rw' if kvm_ok else 'unavailable (namespace mode still works)'}",
-    })
+    # 3. KVM availability (strength control; not required for namespace mode)
+    kvm_ok = _kvm_usable()
+    add(
+        "kvm",
+        kvm_ok,
+        "/dev/kvm rw" if kvm_ok else "/dev/kvm unavailable (Firecracker profiles cannot run; namespace mode still works)",
+        required=False,
+    )
 
     # 4. Required commands
     for cmd in ("python3", "unshare"):
         path = shutil.which(cmd)
-        ok = path is not None
-        checks.append({"name": f"command_{cmd}", "ok": ok, "detail": path or "missing"})
-        if not ok:
-            ready = False
+        add(f"command_{cmd}", path is not None, path or "missing")
 
     # 5. Namespace support (user namespaces enabled)
     try:
@@ -637,13 +651,7 @@ def run_doctor() -> dict[str, Any]:
             userns = f.read().strip() == "1"
     except FileNotFoundError:
         userns = True  # most kernels default to enabled
-    checks.append({
-        "name": "user_namespaces",
-        "ok": userns,
-        "detail": "enabled" if userns else "disabled",
-    })
-    if not userns:
-        ready = False
+    add("user_namespaces", userns, "enabled" if userns else "disabled")
 
     # 6. seccomp support
     seccomp_ok = Path("/proc/self/status").exists()
@@ -653,31 +661,32 @@ def run_doctor() -> dict[str, Any]:
             seccomp_ok = "Seccomp:" in status
         except Exception:
             seccomp_ok = False
-    checks.append({
-        "name": "seccomp",
-        "ok": seccomp_ok,
-        "detail": "available" if seccomp_ok else "unavailable",
-    })
-    if not seccomp_ok:
-        ready = False
+    add("seccomp", seccomp_ok, "available" if seccomp_ok else "unavailable")
 
-    # 7. Cgroup v2 (optional for degraded mode)
-    cgroup_v2 = Path("/sys/fs/cgroup/cgroup.controllers").exists()
-    checks.append({
-        "name": "cgroup_v2",
-        "ok": True,  # degraded mode works without
-        "detail": f"{'available' if cgroup_v2 else 'unavailable (degraded mode)'}, euid={os.geteuid()}",
-    })
+    # 7. Cgroup v2. Root selects full-root mode, which requires real cgroup
+    # limits; non-root runs in degraded-user mode without them.
+    cgroup_ok = detonate_module.legacy_cgroup2_available()
+    if cgroup_ok:
+        cgroup_detail = "writable cgroup2 mount; limits are enforced"
+    elif euid != 0:
+        cgroup_detail = "not root: cgroup limits and mlock unavailable (degraded-user mode)"
+    else:
+        cgroup_detail = (
+            "root, but /sys/fs/cgroup is not a writable cgroup2 mount "
+            "(cgroup v1/hybrid host?); full-root mode would be denied"
+        )
+    add("cgroup_v2", cgroup_ok, cgroup_detail, required=euid == 0)
 
-    # 8. Cindermote observer key
+    # 8. Cindermote observer key (created with mode 0600 on first run)
     key_ok = (PROJECT_DIR / ".observer_key").exists()
-    checks.append({
-        "name": "observer_key",
-        "ok": True,  # receipts can be unsigned if key missing
-        "detail": f"{'present' if key_ok else 'absent (unsigned receipts)'}",
-    })
+    add(
+        "observer_key",
+        True,
+        "present" if key_ok else "absent (created on first run)",
+        required=False,
+    )
 
-    # 9. Firecracker assets (for full VM mode, optional)
+    # 9. Firecracker assets (for full VM mode)
     try:
         from cindermote.mote.firecracker_runtime import preflight_firecracker
         fc_report = preflight_firecracker()
@@ -686,17 +695,26 @@ def run_doctor() -> dict[str, Any]:
     except Exception as exc:
         fc_ok = False
         fc_detail = f"unavailable: {type(exc).__name__}"
-    checks.append({
-        "name": "firecracker_runtime",
-        "ok": True,  # not required for namespace isolation
-        "detail": f"{fc_detail} (namespace isolation does not require Firecracker)",
-    })
+    add(
+        "firecracker_runtime",
+        fc_ok,
+        f"{fc_detail} (namespace isolation does not require Firecracker)",
+        required=False,
+    )
 
+    degraded = [c["name"] for c in checks if not c["ok"] and not c["required"]]
+    if not ready:
+        overall = "FAIL_PREREQUISITES_MISSING"
+    elif degraded:
+        overall = "DEGRADED"
+    else:
+        overall = "READY"
     return {
         "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "overall_status": "READY" if ready else "FAIL_PREREQUISITES_MISSING",
-        "isolation_mode": "full-root" if os.geteuid() == 0 else "degraded-user",
+        "overall_status": overall,
+        "isolation_mode": "full-root" if euid == 0 else "degraded-user",
         "firecracker_available": fc_ok,
+        "degraded_checks": degraded,
         "checks": checks,
     }
 
@@ -818,7 +836,12 @@ def main(args: list[str] | None = None) -> int:
     )
 
     # doctor
-    subparsers.add_parser("doctor", help="Check system prerequisites")
+    doctor_parser = subparsers.add_parser("doctor", help="Check system prerequisites")
+    doctor_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero unless the host is READY (a DEGRADED host fails)",
+    )
 
     parsed = parser.parse_args(args)
 
@@ -828,9 +851,15 @@ def main(args: list[str] | None = None) -> int:
         if report["overall_status"] == "READY":
             print(f"\n✅ System is READY (isolation mode: {report['isolation_mode']})")
             return 0
-        else:
-            print("\n❌ Prerequisites missing. Fix the above issues.")
-            return 1
+        if report["overall_status"] == "DEGRADED":
+            print(
+                f"\n⚠️  System is DEGRADED (isolation mode: {report['isolation_mode']}). "
+                f"Missing strength controls: {', '.join(report['degraded_checks'])}. "
+                "The gate can run, but with reduced isolation; receipts record the mode."
+            )
+            return 1 if parsed.strict else 0
+        print("\n❌ Prerequisites missing. Fix the above issues.")
+        return 1
 
     elif parsed.command == "run":
         if parsed.case == "all":

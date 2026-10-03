@@ -23,6 +23,7 @@ from cindermote.mote.detonate import (
     ControlMessage,
     ProcessIdentity,
     READINESS_PROTOCOL,
+    IsolationSetupError,
     SandboxIdentityError,
     _cleanup_legacy_resources,
     _inspect_sandbox_identity,
@@ -196,6 +197,17 @@ def _force_autonomous_allow(receipt: dict) -> None:
 
 
 class LegacySecurityRepairTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Several tests patch ``os.geteuid`` to 0 and call ``detonate()`` without
+        # being root. The per-user job root derives from the euid and must be
+        # owned by it, so give each test a private job root of its own.
+        jobs = tempfile.TemporaryDirectory()
+        self.addCleanup(jobs.cleanup)
+        os.chmod(jobs.name, 0o700)
+        patcher = mock.patch.object(detonate_module, "_legacy_job_root", return_value=Path(jobs.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_complete_legacy_receipt_is_accepted(self) -> None:
         validate_receipt(_valid_legacy_receipt())
 
@@ -607,7 +619,10 @@ class LegacySecurityRepairTests(unittest.TestCase):
         with self.assertRaisesRegex(SandboxIdentityError, "tracer_pid_mismatch"):
             _validate_tracer_target(tracer, admission)
 
-    @unittest.skipUnless(os.geteuid() == 0 and os.access("/sys/fs/cgroup", os.W_OK), "requires root and writable cgroup v2")
+    @unittest.skipUnless(
+        detonate_module.legacy_cgroup2_available(),
+        "requires root and a writable cgroup v2 mount (a writable tmpfs at /sys/fs/cgroup is not enough)",
+    )
     def test_privileged_benign_traces_validated_child_inside_exact_cgroup(self) -> None:
         observed: dict[str, object] = {}
         original_join = detonate_module._join_cgroup
@@ -868,6 +883,106 @@ class LegacySecurityRepairTests(unittest.TestCase):
         drop_capabilities.assert_not_called()
         install_seccomp.assert_not_called()
         execve.assert_not_called()
+
+class LegacyCgroupAdmissionTests(unittest.TestCase):
+    """The legacy runner may only claim cgroup limits that a cgroup2 mount can enforce."""
+
+    BUDGETS = {"cpu_vcpu": 1, "ram_mib": 64, "pids": 8}
+
+    def test_setup_refuses_a_directory_that_is_not_on_cgroup2(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "cindermote"
+            with (
+                mock.patch.object(detonate_module.os, "geteuid", return_value=0),
+                mock.patch.object(detonate_module, "LEGACY_CGROUP_ROOT", root),
+                mock.patch.object(detonate_module, "cgroup2_mount_writable", return_value=False),
+                self.assertRaises(CgroupOperationError) as raised,
+            ):
+                detonate_module._setup_cgroup("mf-run-test", self.BUDGETS)
+            self.assertEqual(raised.exception.evidence(), {"stage": "create_root", "errno": errno.ENODEV})
+            self.assertFalse(root.exists(), "no pseudo-cgroup may be created on a non-cgroup2 filesystem")
+
+    def test_setup_writes_limits_when_cgroup2_is_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "cindermote"
+            with (
+                mock.patch.object(detonate_module.os, "geteuid", return_value=0),
+                mock.patch.object(detonate_module, "LEGACY_CGROUP_ROOT", root),
+                mock.patch.object(detonate_module, "cgroup2_mount_writable", return_value=True),
+            ):
+                group = detonate_module._setup_cgroup("mf-run-test", self.BUDGETS)
+            self.assertEqual(group, root / "mf-run-test")
+            self.assertEqual((group / "cpu.max").read_text(), "100000 100000\n")
+            self.assertEqual((group / "memory.max").read_text(), f"{64 * 1024 * 1024}\n")
+            self.assertEqual((group / "memory.swap.max").read_text(), "0\n")
+            self.assertEqual((group / "pids.max").read_text(), "8\n")
+
+    def test_setup_is_a_no_op_without_root(self) -> None:
+        with mock.patch.object(detonate_module.os, "geteuid", return_value=1000):
+            self.assertIsNone(detonate_module._setup_cgroup("mf-run-test", self.BUDGETS))
+
+    def test_mount_classification(self) -> None:
+        from cindermote.mote import firecracker_runtime
+
+        cases = [
+            (("cgroup2", {"rw", "nosuid"}, "/sys/fs/cgroup"), True),
+            (("tmpfs", {"rw"}, "/sys/fs/cgroup"), False),
+            (("cgroup", {"rw", "cpu"}, "/sys/fs/cgroup/cpu"), False),
+            (("cgroup2", {"ro"}, "/sys/fs/cgroup"), False),
+            ((None, set(), "unavailable"), False),
+        ]
+        for observed, expected in cases:
+            with self.subTest(filesystem=observed[0], options=sorted(observed[1])):
+                with mock.patch.object(firecracker_runtime, "_mount_for", return_value=observed):
+                    self.assertIs(firecracker_runtime.cgroup2_mount_writable("/sys/fs/cgroup/cindermote"), expected)
+
+class LegacyJobRootTests(unittest.TestCase):
+    """The legacy runner's scratch parent must be private to the calling user."""
+
+    def test_creates_a_private_per_user_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = detonate_module._legacy_job_root(Path(temporary))
+            self.assertEqual(root, Path(temporary) / f"cindermote-{os.geteuid()}")
+            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(detonate_module._legacy_job_root(Path(temporary)), root)
+
+    def test_root_owned_leftover_at_another_uid_cannot_collide(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            other = Path(temporary) / f"cindermote-{os.geteuid() + 1}"
+            other.mkdir(mode=0o755)
+            root = detonate_module._legacy_job_root(Path(temporary))
+            self.assertNotEqual(root, other)
+
+    def test_refuses_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            victim = base / "victim"
+            victim.mkdir(mode=0o700)
+            (base / f"cindermote-{os.geteuid()}").symlink_to(victim)
+            with self.assertRaisesRegex(IsolationSetupError, "must be a directory owned by uid"):
+                detonate_module._legacy_job_root(base)
+
+    def test_refuses_group_or_world_accessible_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / f"cindermote-{os.geteuid()}"
+            root.mkdir()
+            os.chmod(root, 0o755)
+            with self.assertRaisesRegex(IsolationSetupError, "mode 0700"):
+                detonate_module._legacy_job_root(base)
+
+    def test_refuses_a_directory_owned_by_someone_else(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / f"cindermote-{os.geteuid()}"
+            root.mkdir(mode=0o700)
+            real_euid = os.geteuid()
+            with mock.patch.object(detonate_module.os, "geteuid", return_value=real_euid + 1):
+                # A different euid derives a different path, so force the owner mismatch directly.
+                (base / f"cindermote-{real_euid + 1}").mkdir(mode=0o700)
+                with mock.patch.object(Path, "lstat", return_value=mock.Mock(st_mode=0o40700, st_uid=real_euid)):
+                    with self.assertRaisesRegex(IsolationSetupError, "must be a directory owned by uid"):
+                        detonate_module._legacy_job_root(base)
 
 
 if __name__ == "__main__":

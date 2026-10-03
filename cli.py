@@ -12,18 +12,33 @@ PROJECT_DIR = Path(__file__).resolve().parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+from cindermote import __version__  # noqa: E402
+
+LEGACY_DEPRECATION_NOTICE = (
+    "DEPRECATED: the legacy namespace profile shares the host kernel and is not a "
+    "microVM boundary. Use 'cindermote detonate <skill.md> agent-probe' for "
+    "Firecracker isolation. See docs/legacy-deprecation.md."
+)
+
 
 def main(args: list[str] | None = None) -> int:
     if args is None:
         args = sys.argv[1:]
 
     if not args:
-        print("Cindermote CLI v2.0")
+        print(f"Cindermote {__version__}")
         print("Usage:")
         print("  cindermote incident-gate run [--case CASE] [--receipt-dir PATH]")
-        print("  cindermote incident-gate doctor")
-        print("  cindermote detonate <artifact> <type>")
+        print("  cindermote incident-gate doctor [--strict]")
+        print("  cindermote detonate <artifact> agent-probe        (Firecracker)")
+        print("  cindermote detonate <artifact> <legacy-type>      (deprecated)")
+        print("  cindermote kernel-laws")
+        print("  cindermote --version")
         return 1
+
+    if args[0] in {"--version", "-V", "version"}:
+        print(f"Cindermote {__version__}")
+        return 0
 
     cmd = args[0]
     if cmd == "incident-gate":
@@ -69,6 +84,9 @@ def main(args: list[str] | None = None) -> int:
             return result.exit_code
 
         from cindermote.mote.detonate import detonate
+
+        if args[2] != "browser-probe":
+            print(LEGACY_DEPRECATION_NOTICE, file=sys.stderr)
         receipt = detonate(args[1], args[2])
         print(json.dumps(receipt, indent=2, sort_keys=True))
         gate = receipt.get("gate", {}) if isinstance(receipt, dict) else {}
@@ -78,13 +96,14 @@ def main(args: list[str] | None = None) -> int:
         return 0 if gate.get("final_decision") == "ALLOW" else 2
     elif cmd == "kernel-laws":
         from kernel_laws import run_kernel_law_checks
-        res = run_kernel_law_checks()
-        if res.valid:
-            print("Kernel Laws Verification: PASS (0 errors)")
+        laws = run_kernel_law_checks()
+        if laws.valid:
+            checked = ", ".join(f"{count} {name}" for name, count in laws.summary.items())
+            print(f"Kernel Laws Verification: PASS (0 errors; checked {checked})")
             return 0
         else:
-            print(f"Kernel Laws Verification: FAIL ({len(res.errors)} errors)")
-            for err in res.errors:
+            print(f"Kernel Laws Verification: FAIL ({len(laws.errors)} errors)")
+            for err in laws.errors:
                 print(f"  - {err}")
             return 1
     elif cmd == "spine":

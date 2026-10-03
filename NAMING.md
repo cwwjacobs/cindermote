@@ -37,4 +37,6 @@ The predecessor name **Motefield** is preserved only in:
 
 ## No mixed branding
 
-The active codebase must not contain `Motefield`, `motefield`, or `MOTEFIELD_` except in the three provenance/migration documents listed above.
+Code and configuration (`.py`, `.sh`, `.json`, `.js`, `.html`, `.css`, `.yml`, `.yaml`, `.toml`, `.cfg`, `.ini` files and Containerfiles) must not contain `Motefield`, `motefield`, or `MOTEFIELD_` in any case. Prose may use the name only in the three documents listed above, and in README, VALIDATION and CHANGELOG where they link to them. `tests/test_vertical_spine.py` (`test_12`) enforces the code and configuration rule.
+
+Two short identifiers from the predecessor remain in runtime resource names: job ids `mf-run-<8 hex>` (legacy runner) and `mf-web-<8 hex>` (Firecracker runtime). They are matched by exact patterns in cleanup logic, so renaming them is a coordinated change, not a text replace.

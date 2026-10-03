@@ -78,3 +78,22 @@ PYTHONPATH=. pytest -q
 The supported-host test is intentionally skipped unless all host assets and a
 live provider credential are explicitly supplied with
 `CINDERMOTE_AGENT_PROBE_E2E=1`.
+
+## 6. Read the sealed evidence (offline)
+
+`quarantine/agent-probe/<job>.guest-evidence.json.enc` holds the raw guest transcript
+(the target text, prompts, model responses, tool proposals and results) encrypted to
+the offline key from step 1. Decrypt it on an isolated analyst machine:
+
+```bash
+python3 scripts/open-agent-probe-evidence.py \
+  --evidence quarantine/agent-probe/<job>.guest-evidence.json.enc \
+  --private-key "$HOME/offline/cindermote-agent-probe.x25519.key"
+```
+
+Output is JSON Lines (`sequence`, `record_type`, `plaintext`) with the plaintext
+escaped, so hostile terminal control sequences print as text. A wrong key, a tampered
+bundle or a key file readable by others fails with a bounded message and prints no
+transcript. The job id and `guest_evidence_root` go to stderr so they can be compared
+with the signed receipt. The output is attacker-influenced: do not feed it to a trusted
+agent.

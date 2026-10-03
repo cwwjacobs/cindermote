@@ -89,6 +89,10 @@ build; it never permits substitution or resolution of `latest`.
 
 ## Prepare a Firecracker host
 
+Source files that the runtime trusts must not be group- or world-writable. Debian and
+Ubuntu default to umask 002, so a plain `git clone` is rejected: clone with
+`umask 022`, or run `chmod -R go-w .` in the checkout. The error names the file.
+
 The competition host target is Linux `6.18.x`: it is both a Firecracker-tested
 family and supports the tmpfs `noswap` control used here. Preflight verifies
 the operative requirement directly — it re-reads the runtime and jailer mount
@@ -234,6 +238,11 @@ orchestrator itself dies; the next admission reconciles only exact
 Policy Gate runs on the post-purge result.
 
 ## Legacy namespace runner
+
+Deprecated; see `docs/legacy-deprecation.md`. As root it needs a real writable
+cgroup v2 mount at `/sys/fs/cgroup` and is denied on cgroup v1 or hybrid hosts;
+unprivileged runs use the explicit `degraded-user` mode. `cindermote incident-gate
+doctor` says which applies. Scratch directories are `/tmp/cindermote-<euid>/`.
 
 Bootstrap its minimal snapshot:
 

@@ -16,19 +16,19 @@ Tests are split into two tiers:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
-import os
 import platform
 import shutil
-import struct
 import sys
 import tarfile
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 if str(PROJECT_DIR) not in sys.path:
@@ -38,7 +38,6 @@ import cindermote.incident_gate as incident_gate_module
 from cindermote.gate.policy_gate import apply_scoring_matrix
 from cindermote.incident_gate import (
     CINDER_PROBES,
-    CinderProbe,
     ProbeResult,
     _create_evidence_paths,
     _ensure_snapshot,
@@ -281,7 +280,7 @@ class TestDoctorCheck(unittest.TestCase):
         self.assertIn("timestamp", report)
         self.assertIn("overall_status", report)
         self.assertIn("checks", report)
-        self.assertIn(report["overall_status"], {"READY", "FAIL_PREREQUISITES_MISSING"})
+        self.assertIn(report["overall_status"], {"READY", "DEGRADED", "FAIL_PREREQUISITES_MISSING"})
 
     def test_doctor_checks_are_list(self):
         report = run_doctor()
@@ -289,6 +288,77 @@ class TestDoctorCheck(unittest.TestCase):
         for check in report["checks"]:
             self.assertIn("name", check)
             self.assertIn("ok", check)
+
+
+class TestDoctorStatuses(unittest.TestCase):
+    """The doctor must not call a host READY when isolation-strength controls are missing."""
+
+    def _doctor(self, *, euid: int, kvm: bool, cgroup: bool, firecracker: bool) -> dict:
+        with tempfile.TemporaryDirectory() as temporary:
+            snapshot = Path(temporary) / "snapshot.tar.gz"
+            manifest = Path(temporary) / "snapshot.manifest"
+            snapshot.write_bytes(b"x")
+            manifest.write_bytes(b"x")
+            with (
+                patch.object(incident_gate_module, "SNAPSHOT_PATH", snapshot),
+                patch.object(incident_gate_module, "SNAPSHOT_MANIFEST_PATH", manifest),
+                patch.object(incident_gate_module, "verify_snapshot", return_value={}),
+                patch.object(incident_gate_module, "_kvm_usable", return_value=kvm),
+                patch.object(incident_gate_module.detonate_module, "legacy_cgroup2_available", return_value=cgroup),
+                patch.object(incident_gate_module.os, "geteuid", return_value=euid),
+                patch(
+                    "cindermote.mote.firecracker_runtime.preflight_firecracker",
+                    return_value=Mock(ready=firecracker, checks=()),
+                ),
+            ):
+                return incident_gate_module.run_doctor()
+
+    def test_everything_present_is_ready(self):
+        report = self._doctor(euid=0, kvm=True, cgroup=True, firecracker=True)
+        self.assertEqual(report["overall_status"], "READY")
+        self.assertEqual(report["degraded_checks"], [])
+
+    def test_unprivileged_host_without_kvm_is_degraded_not_ready(self):
+        report = self._doctor(euid=1000, kvm=False, cgroup=False, firecracker=False)
+        self.assertEqual(report["overall_status"], "DEGRADED")
+        self.assertEqual(report["isolation_mode"], "degraded-user")
+        self.assertEqual(sorted(report["degraded_checks"]), ["cgroup_v2", "firecracker_runtime", "kvm"])
+        by_name = {check["name"]: check for check in report["checks"]}
+        self.assertIs(by_name["kvm"]["ok"], False)
+        self.assertIs(by_name["kvm"]["required"], False)
+
+    def test_root_without_a_real_cgroup2_mount_cannot_run(self):
+        report = self._doctor(euid=0, kvm=True, cgroup=False, firecracker=True)
+        self.assertEqual(report["overall_status"], "FAIL_PREREQUISITES_MISSING")
+        by_name = {check["name"]: check for check in report["checks"]}
+        self.assertIs(by_name["cgroup_v2"]["required"], True)
+        self.assertIn("not a writable cgroup2 mount", by_name["cgroup_v2"]["detail"])
+
+    def test_cli_exit_codes_distinguish_degraded_in_strict_mode(self):
+        degraded = {
+            "overall_status": "DEGRADED",
+            "isolation_mode": "degraded-user",
+            "degraded_checks": ["kvm"],
+            "checks": [],
+        }
+        ready = {**degraded, "overall_status": "READY", "degraded_checks": []}
+        failed = {**degraded, "overall_status": "FAIL_PREREQUISITES_MISSING"}
+        cases = [
+            (degraded, [], 0),
+            (degraded, ["--strict"], 1),
+            (ready, ["--strict"], 0),
+            (failed, [], 1),
+        ]
+        for report, extra, expected in cases:
+            with self.subTest(status=report["overall_status"], extra=extra):
+                with (
+                    patch.object(incident_gate_module, "run_doctor", return_value=report),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    code = incident_gate_module.main(["doctor", *extra])
+                self.assertEqual(code, expected)
+                if report["overall_status"] == "DEGRADED":
+                    self.assertIn("DEGRADED", out.getvalue())
 
 
 # ---------------------------------------------------------------------------

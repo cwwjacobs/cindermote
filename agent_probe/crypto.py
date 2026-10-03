@@ -1,18 +1,21 @@
-"""Unified Cryptographic Primitives Wrapper for Cindermote.
+"""Unified facade over Cindermote's two evidence-encryption modules.
 
-Provides high-level, audited interfaces around PyCA ``cryptography`` and
-``libsodium`` for:
-    - **RFC 9180 HPKE Base Mode**: DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 / ChaCha20-Poly1305
-    - **Secretstream**: XChaCha20-Poly1305 stream encryption for guest evidence
+    - **RFC 9180 HPKE Base Mode** (``agent_probe.hpke``): DHKEM(X25519,
+      HKDF-SHA256) / HKDF-SHA256 / ChaCha20-Poly1305, built on PyCA
+      ``cryptography`` primitives.
+    - **Secretstream** (``agent_probe.secretstream``): libsodium's
+      XChaCha20-Poly1305 stream construction through ``ctypes``.
+
+Neither module has had an independent security audit. Their correctness is
+checked by a published known-answer vector and by interoperability with PyCA's
+own HPKE implementation in ``tests/test_crypto_vectors.py``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, List, Tuple
+from typing import List, Tuple
 
-# Re-export HPKE core functions from PyCA cryptography implementation
-from ._hpke_reference import (
+from .hpke import (
     HpkeError,
     SealedBox,
     generate_key_pair as hpke_generate_key_pair,
@@ -20,8 +23,7 @@ from ._hpke_reference import (
     seal_base as hpke_seal_base,
 )
 
-# Re-export SecretStream core functions
-from ._secretstream_reference import (
+from .secretstream import (
     EncryptedChunk,
     PushStream,
     SecretStreamError,

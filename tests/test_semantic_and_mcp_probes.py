@@ -9,7 +9,7 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from mcp_probe_suite import MCPProbeSuite
-from semantic_loops import SemanticLoopEngine, SemanticProbeResult
+from semantic_loops import SemanticLoopEngine
 
 
 class TestSemanticAndMCPProbes(unittest.TestCase):

@@ -61,7 +61,7 @@ from cindermote.mote.firecracker_runtime import (
 )
 
 from .broker import AgentProbeBroker
-from .canonical import canonical_bytes, sha256_hex
+from .canonical import canonical_bytes
 from .evidence import validate_bundle
 from .protocol import AGENT_VERSION, CONTROL_VERSION, MAX_CONTROL_LINE, VSOCK_PORT
 

@@ -1,0 +1,93 @@
+name: Supported host (KVM)
+
+# Manual only. This is the run that turns "implemented" into "demonstrated": it
+# boots real Firecracker microVMs, so it needs a self-hosted runner that GitHub's
+# hosted runners cannot provide. It has not been executed from this repository yet.
+#
+# Runner requirements (see RUNBOOK.md for the details of each):
+#   - labels: self-hosted, linux, x64, kvm
+#   - /dev/kvm and /dev/net/tun readable and writable by the runner user
+#   - passwordless sudo, cgroup v2 mounted at /sys/fs/cgroup, host swap disabled
+#   - Docker (build time only), curl, and the system /usr/bin/python3 (3.11+) with
+#     python3-pytest, python3-cryptography and libsodium23. The privileged steps use
+#     /usr/bin/python3 on purpose: the dedicated proxy user must be able to reach the
+#     interpreter and stdlib, which a virtualenv under a private home directory is not.
+#
+# Repository secrets used for the live-provider leg (leave unset to run the
+# host-admission and containment tests only):
+#   AGENT_PROBE_E2E_ENDPOINT   https://.../v1/chat/completions
+#   AGENT_PROBE_E2E_MODEL      provider model id
+#   AGENT_PROBE_E2E_KEY        a fresh, single-purpose provider credential
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supported-host
+  cancel-in-progress: false
+
+jobs:
+  supported-host:
+    name: Firecracker agent-probe
+    runs-on: [self-hosted, linux, x64, kvm]
+    timeout-minutes: 60
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Keep checkout permissions strict
+        # Trusted-source gates reject group/world-writable files.
+        run: chmod -R go-w .
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends python3-pytest python3-cryptography libsodium23
+
+      - name: Fetch pinned Firecracker assets
+        run: ./scripts/fetch-firecracker.sh
+
+      - name: Build the pinned guest rootfs
+        # Fails unless the result matches policy/firecracker-assets.lock.json.
+        run: ./scripts/build-firecracker-image.sh
+
+      - name: Prepare and preflight the host
+        run: |
+          sudo ./scripts/prepare-firecracker-host.sh
+          sudo /usr/bin/python3 mote/detonate.py --firecracker-preflight
+
+      - name: Generate throwaway agent-probe keys
+        run: |
+          python3 scripts/generate-agent-probe-keys.py \
+            --offline-private-key "$RUNNER_TEMP/agent-probe-offline.key"
+
+      - name: Full suite with privileges
+        run: sudo /usr/bin/python3 -m pytest -q tests -rs
+
+      - name: Agent-probe on real Firecracker (live provider)
+        # The test skips itself when the secrets are unset.
+        env:
+          CINDERMOTE_AGENT_PROBE_E2E: "1"
+          CINDERMOTE_AGENT_PROBE_E2E_ENDPOINT: ${{ secrets.AGENT_PROBE_E2E_ENDPOINT }}
+          CINDERMOTE_AGENT_PROBE_E2E_MODEL: ${{ secrets.AGENT_PROBE_E2E_MODEL }}
+          CINDERMOTE_AGENT_PROBE_E2E_KEY: ${{ secrets.AGENT_PROBE_E2E_KEY }}
+        run: >-
+          sudo --preserve-env=CINDERMOTE_AGENT_PROBE_E2E,CINDERMOTE_AGENT_PROBE_E2E_ENDPOINT,CINDERMOTE_AGENT_PROBE_E2E_MODEL,CINDERMOTE_AGENT_PROBE_E2E_KEY
+          /usr/bin/python3 -m pytest -q tests/test_agent_probe_supported_host.py -rs
+
+      - name: Upload signed receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supported-host-receipts
+          path: |
+            receipts/
+          if-no-files-found: ignore

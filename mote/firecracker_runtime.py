@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -260,7 +260,7 @@ def _verified_regular_file(path: Path, expected_sha256: str, executable: bool) -
     if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
         return False, "not a regular non-symlink file"
     if metadata.st_mode & 0o022:
-        return False, "group/world writable"
+        return False, "group/world writable (run 'chmod go-w' on it, or fix the umask used to create it)"
     if executable and not os.access(path, os.X_OK):
         return False, "not executable"
     try:
@@ -485,6 +485,18 @@ def _mount_for(path: Path) -> tuple[str | None, set[str], str]:
         return None, set(), "unavailable"
     _, filesystem, options, mountpoint = max(matches)
     return filesystem, options, mountpoint
+
+
+def cgroup2_mount_writable(path: Path | str) -> bool:
+    """Return True only when ``path`` lies on a writable cgroup2 mount.
+
+    A writable directory under ``/sys/fs/cgroup`` is not evidence of a cgroup
+    hierarchy: on cgroup v1 and hybrid hosts that path is a plain tmpfs, where
+    ``memory.max`` and ``cgroup.procs`` are inert files and no limit is applied.
+    """
+
+    filesystem, options, _mountpoint = _mount_for(Path(path))
+    return filesystem == "cgroup2" and "rw" in options and "ro" not in options
 
 
 def _swap_disabled() -> tuple[bool, str]:

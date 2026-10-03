@@ -63,8 +63,16 @@ prior privileged run from contaminating later tests.
 Doctor check:
 
 ```bash
-./bin/cindermote incident-gate doctor
+./bin/cindermote incident-gate doctor            # READY / DEGRADED / FAIL_PREREQUISITES_MISSING
+./bin/cindermote incident-gate doctor --strict   # also fails a DEGRADED host
 ```
+
+`READY` means every check passes, including root with a real cgroup v2 mount,
+usable KVM and a ready Firecracker runtime. `DEGRADED` means the namespace gate
+can run but at least one isolation-strength control is missing (the usual state of
+an unprivileged development host). `FAIL_PREREQUISITES_MISSING` means it cannot
+run here; as root that includes a `/sys/fs/cgroup` that is not a writable cgroup2
+mount.
 
 Run all probes:
 
@@ -117,6 +125,14 @@ Full repository suite:
 ```bash
 python -m pytest -q
 ```
+
+## References
+
+The probes are generic consequence-path tests, not a reproduction of the incident.
+The July 2026 OpenAI and Hugging Face incident is described by its own parties:
+
+- OpenAI, [The Hugging Face incident and the road ahead](https://openai.com/index/hugging-face-incident-and-the-road-ahead/)
+- Hugging Face, [Anatomy of a Frontier Lab Agent Intrusion: A Technical Timeline of the July 2026 Incident](https://huggingface.co/blog/agent-intrusion-technical-timeline)
 
 ## Non-claims
 

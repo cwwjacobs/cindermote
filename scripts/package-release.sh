@@ -30,6 +30,11 @@ rsync -a \
   --exclude='.cindermote/cache' \
   --exclude='.cindermote/runtime' \
   --exclude='.cindermote/replays' \
+  --exclude='policy/golden-snapshot.*' \
+  --exclude='.venv' \
+  --exclude='.ruff_cache' \
+  --exclude='.mypy_cache' \
+  --exclude='.coverage*' \
   --exclude='scratch' \
   --exclude='dist' \
   "${PROJECT_DIR}/" "${STAGE_DIR}/"

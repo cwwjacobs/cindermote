@@ -1,0 +1,39 @@
+# Tool configuration only. Cindermote is not yet an installable package; see CONTRIBUTING.md.
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["receipts", "quarantine", "alerts", ".cindermote"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    # The flat repository layout puts first-party modules on sys.path at import time.
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Copied into the hash-pinned guest image. Editing these changes the rootfs source
+# attestation and requires a rebuild and re-pin, so lint cleanups wait for the next one.
+"guest/agent_probe_agent.py" = ["F401"]
+"guest/browser_agent.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+# Count modules that no test imports (guest/ and broker/ have no __init__.py).
+include_namespace_packages = true
+skip_empty = true
+# Ratchet: 64.7% measured on Python 3.11, 3.12 and 3.13 with no KVM and the sandbox
+# integration tests skipped (the worst case on a GitHub-hosted runner). Raise it as
+# coverage improves; never lower it to land a change.
+fail_under = 60

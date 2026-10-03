@@ -915,11 +915,21 @@ def sign_receipt(receipt_without_signature: dict, key: bytes) -> str:
 
 
 def verify_signature(receipt: dict, key: bytes) -> bool:
+    """Return True only for a receipt authenticated by ``key``.
+
+    Receipts are read back from files, so every malformed value must produce
+    ``False``: ``hmac.compare_digest`` raises ``TypeError`` for non-ASCII
+    strings, and canonicalization raises ``ValueError`` for NaN/Infinity.
+    """
+
     candidate = dict(receipt)
     signature = candidate.pop("receipt_signature", "")
-    if not isinstance(signature, str):
+    if not isinstance(signature, str) or not signature.isascii():
         return False
-    expected = sign_receipt(candidate, key)
+    try:
+        expected = sign_receipt(candidate, key)
+    except (TypeError, ValueError, RecursionError):
+        return False
     return hmac.compare_digest(signature, expected)
 
 

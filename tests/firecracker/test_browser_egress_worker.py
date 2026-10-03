@@ -742,5 +742,144 @@ class WorkerProcessTests(unittest.TestCase):
         self.assertTrue(kwargs["start_new_session"])
 
 
+class LiveProcessGroupMemberTests(unittest.TestCase):
+    """Zombies are dead: purge verification must not wait on how fast PID 1 reaps."""
+
+    @staticmethod
+    def _write_stat(proc_root: Path, pid: int, comm: str, state: str, pgrp: int) -> None:
+        directory = proc_root / str(pid)
+        directory.mkdir()
+        (directory / "stat").write_text(f"{pid} ({comm}) {state} 1 {pgrp} {pgrp} 0 -1 4194304 0 0\n")
+
+    def test_only_non_zombie_members_of_the_group_are_live(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            self._write_stat(proc, 200, "leader", "S", 200)
+            self._write_stat(proc, 201, "child", "R", 200)
+            self._write_stat(proc, 202, "dead child", "Z", 200)
+            self._write_stat(proc, 203, "dying", "X", 200)
+            self._write_stat(proc, 300, "other group", "S", 300)
+            (proc / "self").mkdir()  # non-numeric entries are ignored
+            self.assertEqual(worker_module._live_process_group_members(200, proc), ([200, 201], True))
+
+    def test_group_with_only_zombies_has_no_live_members(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            self._write_stat(proc, 202, "dead", "Z", 200)
+            self.assertEqual(worker_module._live_process_group_members(200, proc), ([], True))
+
+    def test_comm_containing_parentheses_is_parsed_from_the_last_one(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            self._write_stat(proc, 210, "evil) S 1 999 (x", "S", 200)
+            self.assertEqual(worker_module._live_process_group_members(200, proc), ([210], True))
+
+    def test_unreadable_or_malformed_entries_make_the_scan_incomplete(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            (proc / "400").mkdir()
+            (proc / "400" / "stat").write_text("garbage")
+            members, complete = worker_module._live_process_group_members(200, proc)
+            self.assertEqual(members, [])
+            self.assertFalse(complete)
+        members, complete = worker_module._live_process_group_members(200, Path("/nonexistent-proc-root"))
+        self.assertEqual((members, complete), ([], False))
+
+    def test_incomplete_scan_is_treated_as_a_survivor(self) -> None:
+        worker = BrowserEgressWorker.__new__(BrowserEgressWorker)
+        process = SimpleNamespace(pid=os.getpid(), _cindermote_process_group=True)
+        with (
+            mock.patch.object(worker_module.os, "killpg", return_value=None),
+            mock.patch.object(worker_module, "_live_process_group_members", return_value=([], False)),
+        ):
+            self.assertTrue(worker._process_group_exists(process))
+        with (
+            mock.patch.object(worker_module.os, "killpg", return_value=None),
+            mock.patch.object(worker_module, "_live_process_group_members", return_value=([], True)),
+        ):
+            self.assertFalse(worker._process_group_exists(process))
+        with (
+            mock.patch.object(worker_module.os, "killpg", return_value=None),
+            mock.patch.object(worker_module, "_live_process_group_members", return_value=([77], True)),
+        ):
+            self.assertTrue(worker._process_group_exists(process))
+
+    def test_killed_orphan_does_not_count_even_while_it_is_a_zombie(self) -> None:
+        read_end, write_end = os.pipe()
+        leader = os.fork()
+        if leader == 0:
+            try:
+                os.setsid()
+                grandchild = os.fork()
+                if grandchild == 0:
+                    while True:
+                        time.sleep(0.05)
+                os.write(write_end, str(grandchild).encode("ascii"))
+            finally:
+                os._exit(0)
+        os.waitpid(leader, 0)
+        grandchild = int(os.read(read_end, 32))
+        os.close(read_end)
+        os.close(write_end)
+        os.kill(grandchild, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                state = Path(f"/proc/{grandchild}/stat").read_text().rpartition(")")[2].split()[0]
+            except FileNotFoundError:
+                break
+            if state in {"Z", "X"}:
+                break
+            time.sleep(0.01)
+        # The group leader (pid == pgid) has exited and been reaped.
+        self.assertEqual(worker_module._live_process_group_members(leader, Path("/proc")), ([], True))
+
+
+class TrustedSourcePermissionTests(unittest.TestCase):
+    """A checkout made under umask 002 must fail with an actionable message."""
+
+    def _read(self, mode: int) -> BaseException | None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            contract = Path(temporary) / "browser_contract.py"
+            proxy = Path(temporary) / "browser_egress_proxy.py"
+            for path in (contract, proxy):
+                path.write_text("pass\n")
+                os.chmod(path, 0o644)
+            os.chmod(proxy, mode)
+            table = {"mote.browser_contract": contract, "broker.browser_egress_proxy": proxy}
+            with mock.patch.object(worker_module, "_TRUSTED_SOURCE_PATHS", table):
+                try:
+                    worker_module._read_trusted_proxy_sources()
+                except BrowserEgressWorkerError as exc:
+                    return exc
+        return None
+
+    def test_group_writable_source_names_the_file_and_the_fix(self) -> None:
+        error = self._read(0o664)
+        self.assertIsInstance(error, BrowserEgressWorkerError)
+        message = str(error)
+        self.assertIn("browser_egress_proxy.py", message)
+        self.assertIn("group/world-writable", message)
+        self.assertIn("0664", message)
+        self.assertIn("chmod -R go-w", message)
+        self.assertIn("umask 022", message)
+
+    def test_world_writable_source_is_refused(self) -> None:
+        self.assertIn("group/world-writable", str(self._read(0o646)))
+
+    def test_private_source_is_read(self) -> None:
+        self.assertIsNone(self._read(0o644))
+
+
 if __name__ == "__main__":
     unittest.main()
