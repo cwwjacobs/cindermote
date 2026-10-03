@@ -300,6 +300,55 @@ class _ByteBudget:
             self._reserved -= reservation
 
 
+# ``validate_resolved_address`` trusts ``ipaddress.is_global``, whose tables
+# differ between Python releases (3.12.3 predates RFC 9637's 3fff::/20, and the
+# deprecated fec0::/10 site-local range is reported global by 3.11 through
+# 3.13). The egress proxy therefore applies its own tables on top: IPv6 must be
+# global unicast (2000::/3) and nothing may sit in a special-purpose range,
+# whatever the interpreter in use believes.
+_IPV6_GLOBAL_UNICAST = ipaddress.ip_network("2000::/3")
+_NON_PUBLIC_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        # IPv4 special-purpose registry (RFC 6890 and later updates)
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.0.0.0/24",
+        "192.0.2.0/24",
+        "192.88.99.0/24",
+        "192.168.0.0/16",
+        "198.18.0.0/15",
+        "198.51.100.0/24",
+        "203.0.113.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+        # IPv6 special-purpose ranges inside 2000::/3
+        "2001::/23",
+        "2001:db8::/32",
+        "2002::/16",
+        "3fff::/20",
+        "5f00::/16",
+    )
+)
+
+
+def _validate_public_address(value: str) -> str:
+    """Return a canonical public unicast IP or raise ``BrowserContractError``."""
+
+    canonical = validate_resolved_address(value)
+    address = ipaddress.ip_address(canonical)
+    if address.version == 6 and address not in _IPV6_GLOBAL_UNICAST:
+        raise BrowserContractError("resolved address is not global unicast")
+    for network in _NON_PUBLIC_NETWORKS:
+        if network.version == address.version and address in network:
+            raise BrowserContractError("resolved address is in a special-purpose range")
+    return canonical
+
+
 def _default_resolver(hostname: str) -> Iterable[str]:
     answers = socket.getaddrinfo(
         hostname,
@@ -632,7 +681,7 @@ class BrowserEgressProxy:
             checked: list[str] = []
             for answer in value:
                 try:
-                    validated = validate_resolved_address(answer)
+                    validated = _validate_public_address(answer)
                 except (BrowserContractError, TypeError, ValueError) as exc:
                     # A mixed public/private response fails as a whole.  Silently
                     # discarding the unsafe address enables rebinding ambiguity.
@@ -1408,8 +1457,8 @@ class BrowserEgressProxy:
                     or isinstance(peer_value[1], bool)
                 ):
                     raise ValueError("peer address is missing")
-                peer = validate_resolved_address(peer_value[0])
-                expected = validate_resolved_address(address)
+                peer = _validate_public_address(peer_value[0])
+                expected = _validate_public_address(address)
                 if (
                     peer != expected
                     or peer not in policy.addresses

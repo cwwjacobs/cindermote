@@ -278,6 +278,45 @@ def _encode_frame(value: Mapping[str, Any], maximum: int) -> bytes:
     return _FRAME_HEADER.pack(len(payload)) + payload
 
 
+def _live_process_group_members(
+    process_group: int,
+    proc_root: Path = Path("/proc"),
+) -> tuple[list[int], bool]:
+    """Return the non-zombie members of ``process_group`` and whether the scan was complete.
+
+    ``killpg(pgid, 0)`` keeps succeeding while a killed process is a zombie
+    awaiting its parent. For an orphaned descendant that parent is PID 1, which
+    may reap lazily, or never when a container's PID 1 is not an init. A zombie
+    holds no memory, sockets or CPU, so it must not count as a survivor.
+    """
+
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return [], False
+    members: list[int] = []
+    complete = True
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            text = (entry / "stat").read_text(encoding="ascii", errors="replace")
+        except (FileNotFoundError, ProcessLookupError):
+            continue  # exited between listing and reading
+        except OSError:
+            complete = False
+            continue
+        # "<pid> (<comm>) <state> <ppid> <pgrp> ...": comm may contain ")" so
+        # split on the last one.
+        fields = text.rpartition(")")[2].split()
+        if len(fields) < 3 or not fields[2].lstrip("-").isdigit():
+            complete = False
+            continue
+        if int(fields[2]) == process_group and fields[0] not in {"Z", "X"}:
+            members.append(int(entry.name))
+    return sorted(members), complete
+
+
 def _remaining(deadline: float) -> float:
     value = deadline - time.monotonic()
     if value <= 0:
@@ -691,9 +730,16 @@ def _read_trusted_proxy_sources() -> dict[str, tuple[str, bytes]]:
             raise BrowserEgressWorkerError("trusted proxy source cannot be opened") from exc
         try:
             metadata = os.fstat(fd)
+            if stat.S_ISREG(metadata.st_mode) and metadata.st_mode & 0o022:
+                # Ubuntu/Debian default to umask 002, so a plain ``git clone``
+                # produces group-writable files that this gate must refuse.
+                raise BrowserEgressWorkerError(
+                    f"trusted proxy source {Path(path).name} is group/world-writable "
+                    f"(mode {stat.S_IMODE(metadata.st_mode):04o}); run 'chmod -R go-w' on the "
+                    "checkout or clone with umask 022"
+                )
             if (
                 not stat.S_ISREG(metadata.st_mode)
-                or metadata.st_mode & 0o022
                 or not 1 <= metadata.st_size <= _MAX_TRUSTED_SOURCE_BYTES
             ):
                 raise BrowserEgressWorkerError("trusted proxy source metadata is unsafe")
@@ -1341,7 +1387,10 @@ class BrowserEgressWorker:
             return False
         except PermissionError:
             return True
-        return True
+        # The group still has entries; they may all be zombies. Only live
+        # members, or a scan that could not be completed, count as survivors.
+        members, complete = _live_process_group_members(process.pid)
+        return bool(members) or not complete
 
     def _wait_process_group_empty(
         self,

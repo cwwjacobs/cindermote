@@ -754,5 +754,78 @@ class BrowserEgressRealListenerTests(unittest.TestCase):
             proxy.stop()
 
 
+class PublicAddressPolicyTests(unittest.TestCase):
+    """Private, reserved and special-purpose answers are refused on every Python release."""
+
+    BLOCKED = {
+        "loopback": "127.0.0.1",
+        "rfc1918 10/8": "10.1.2.3",
+        "rfc1918 172.16/12": "172.16.5.5",
+        "rfc1918 192.168/16": "192.168.0.1",
+        "link-local metadata": "169.254.169.254",
+        "carrier-grade NAT": "100.64.0.1",
+        "this network": "0.0.0.0",
+        "IETF protocol assignments": "192.0.0.1",
+        "benchmarking": "198.18.0.1",
+        "documentation (TEST-NET-1)": "192.0.2.1",
+        "documentation (TEST-NET-2)": "198.51.100.1",
+        "documentation (TEST-NET-3)": "203.0.113.1",
+        "6to4 relay anycast": "192.88.99.1",
+        "multicast": "224.0.0.1",
+        "class E": "240.0.0.1",
+        "broadcast": "255.255.255.255",
+        "IPv6 loopback": "::1",
+        "IPv6 unique local": "fd00::1",
+        "IPv6 link-local": "fe80::1",
+        "IPv6 site-local (deprecated)": "fec0::1",
+        "IPv4-mapped loopback": "::ffff:127.0.0.1",
+        "IPv4-mapped metadata": "::ffff:169.254.169.254",
+        "NAT64 well-known prefix to metadata": "64:ff9b::a9fe:a9fe",
+        "NAT64 local-use": "64:ff9b:1::1",
+        "6to4 embedding 10.0.0.1": "2002:a00:1::",
+        "6to4 embedding 127.0.0.1": "2002:7f00:1::",
+        "Teredo": "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+        "IPv4-compatible (deprecated)": "::127.0.0.1",
+        "documentation 2001:db8::/32": "2001:db8::1",
+        "documentation 3fff::/20 (RFC 9637)": "3fff::1",
+        "SRv6 SIDs": "5f00::1",
+        "IPv6 unspecified": "::",
+        "IPv6 multicast": "ff02::1",
+    }
+    ALLOWED = {
+        "public IPv4": "93.184.216.34",
+        "public IPv4 resolver": "8.8.8.8",
+        "public IPv6": "2606:4700:4700::1111",
+        "public IPv6 resolver": "2001:4860:4860::8888",
+        "IPv4-mapped public address is canonicalized": "::ffff:8.8.8.8",
+    }
+
+    def test_blocked_ranges_are_refused(self) -> None:
+        for label, address in self.BLOCKED.items():
+            with self.subTest(label=label, address=address):
+                with self.assertRaises(proxy_module.BrowserContractError):
+                    proxy_module._validate_public_address(address)
+
+    def test_public_addresses_are_accepted_in_canonical_form(self) -> None:
+        for label, address in self.ALLOWED.items():
+            with self.subTest(label=label, address=address):
+                accepted = proxy_module._validate_public_address(address)
+                self.assertEqual(accepted, accepted.strip())
+                self.assertNotIn("::ffff:", accepted)
+
+    def test_malformed_values_are_refused_not_raised_as_other_errors(self) -> None:
+        for value in ("", " 8.8.8.8", "8.8.8.8 ", "8.8.8.8%eth0", "example.com", "8.8.8", "0x08.8.8.8", None, 7):
+            with self.subTest(value=value):
+                with self.assertRaises(proxy_module.BrowserContractError):
+                    proxy_module._validate_public_address(value)  # type: ignore[arg-type]
+
+    def test_ipv6_must_be_global_unicast(self) -> None:
+        # Independent of ipaddress.is_global: anything outside 2000::/3 is refused.
+        for address in ("4000::1", "8000::1", "c000::1", "e000::1"):
+            with self.subTest(address=address):
+                with self.assertRaises(proxy_module.BrowserContractError):
+                    proxy_module._validate_public_address(address)
+
+
 if __name__ == "__main__":
     unittest.main()

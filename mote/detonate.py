@@ -43,7 +43,8 @@ for import_root in (PROJECT_DIR, WORKSPACE_DIR):
     if str(import_root) not in sys.path:
         sys.path.insert(0, str(import_root))
 
-from cindermote.broker.broker import CapabilityBroker, OutwardReportSchemaError
+from cindermote import __version__
+from cindermote.broker.broker import CapabilityBroker
 from cindermote.gate.policy_gate import apply_scoring_matrix
 from cindermote.observer.detectors import (
     DetectorEngine,
@@ -66,7 +67,11 @@ from cindermote.observer.receipt import (
     write_receipt,
 )
 from cindermote.mote.browser_contract import make_probe_request, origin_for_url, validate_probe_request
-from cindermote.mote.firecracker_runtime import preflight_firecracker, run_browser_probe
+from cindermote.mote.firecracker_runtime import (
+    cgroup2_mount_writable,
+    preflight_firecracker,
+    run_browser_probe,
+)
 
 
 POLICY_PATH = PROJECT_DIR / "policy" / "hotcell-policy.json"
@@ -1393,12 +1398,51 @@ def _preflight_artifact(path: Path, artifact_type: str, detector: DetectorEngine
                     )
 
 
+def _legacy_job_root(base: Path = Path("/tmp")) -> Path:
+    """Return a private, per-user parent directory for legacy job trees.
+
+    A shared ``/tmp/cindermote`` is created with the caller's umask, can be
+    pre-created by another user, and collides with leftovers from a run at a
+    different privilege level. ``<base>/cindermote-<euid>`` is accepted only if
+    it is a real directory (not a symlink) owned by this user with no group or
+    other access.
+    """
+
+    euid = os.geteuid()
+    root = base / f"cindermote-{euid}"
+    try:
+        root.mkdir(mode=0o700, exist_ok=True)
+        metadata = root.lstat()
+    except OSError as exc:
+        raise IsolationSetupError(f"legacy job root {root} cannot be prepared: {exc.strerror}") from exc
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != euid or metadata.st_mode & 0o077:
+        raise IsolationSetupError(
+            f"legacy job root {root} must be a directory owned by uid {euid} with mode 0700; "
+            "remove or repair it and retry"
+        )
+    return root
+
+
+def legacy_cgroup2_available() -> bool:
+    """True when the legacy runner can enforce real cgroup v2 limits.
+
+    Requires root and a writable cgroup2 mount under the legacy cgroup root.
+    Writability alone is not enough: on cgroup v1/hybrid hosts the same path is
+    a tmpfs directory that accepts the limit files but enforces nothing.
+    """
+
+    return os.geteuid() == 0 and cgroup2_mount_writable(LEGACY_CGROUP_ROOT.parent)
+
+
 def _setup_cgroup(job_id: str, budgets: dict) -> Path | None:
     if os.geteuid() != 0:
         return None
     root = LEGACY_CGROUP_ROOT
     group = root / job_id
     stage = "create_root"
+    if not cgroup2_mount_writable(root.parent):
+        # Fail closed: never "create" limits on a filesystem that cannot apply them.
+        raise CgroupOperationError(stage, errno.ENODEV)
     try:
         root.mkdir(exist_ok=True)
         stage = "create_job"
@@ -2073,8 +2117,8 @@ def detonate(
             "user/mount/network/IPC/UTS namespaces, chroot, rlimits, ptrace, and seccomp remain active.",
             file=sys.stderr,
         )
-    job_dir = Path("/tmp/cindermote") / job_id
-    job_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
+    job_dir = _legacy_job_root() / job_id
+    job_dir.mkdir(mode=0o700, exist_ok=False)
     cgroup: Path | None = None
     if isolation_mode == "full-root":
         try:
@@ -2919,7 +2963,7 @@ def detonate(
 
 
 def _cli() -> int:
-    parser = argparse.ArgumentParser(description="Cindermote Hotcell v1.1")
+    parser = argparse.ArgumentParser(description=f"Cindermote Hotcell {__version__}")
     parser.add_argument("--bootstrap-snapshot", action="store_true")
     parser.add_argument("--artifact")
     parser.add_argument("--artifact-type", choices=sorted(VALID_ARTIFACT_TYPES))
