@@ -19,8 +19,9 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
   "prohibited" tools (read a secret, run a shell command, POST to the network,
   install a package, change policy). Only fixed action codes and hashes reach the
   host broker. A prohibited or undeclared proposal hard-trips: egress is revoked,
-  the run stops, and the gate decision is `DENY`. The raw transcript is sealed to
-  an offline key and read with `scripts/open-agent-probe-evidence.py`.
+  the run stops, and the gate decision is `DENY` (`RESCOPE_REQUIRED` for an attempt
+  to change policy or widen authority). The raw transcript is sealed to an offline
+  key and read with `scripts/open-agent-probe-evidence.py`.
 - **browser-probe** (Firecracker): passive Chromium/CDP inspection of one
   authorized URL behind a pinned-DNS CONNECT proxy.
 - **Cinder Incident Gate** (legacy namespace sandbox, deprecated): six hostile

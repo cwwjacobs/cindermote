@@ -259,6 +259,22 @@ cgroup v2 mount instead of failing), and `/dev/kvm` in the vertical spine. In ru
 18 sandbox-admission skips are the same as at the starting point: a root run on this host
 cannot be admitted because it has no real cgroup v2 mount.
 
+### Hosted CI on the pushed branch
+
+Exact head `073ee292c4e9985ee4491e23e7c371f9a6c54ec1`,
+[CI run 37094478277](https://github.com/cwwjacobs/cindermote/actions/runs/37094478277):
+`Lint and types` passed (ruff, mypy, `kernel-laws`), and the unprivileged suite plus the
+root job-image contract passed on all three interpreters:
+
+| Job | Unprivileged suite | Coverage (gate 60%) | Root job-image contract |
+|---|---|---|---|
+| Python 3.11.16 | 429 passed, 21 skipped, 1 deselected, 189 subtests passed (49 s) | 66.84% | 1 passed |
+| Python 3.12.14 | 429 passed, 21 skipped, 1 deselected, 189 subtests passed (66 s) | 66.83% | 1 passed |
+| Python 3.13.15 | 429 passed, 21 skipped, 1 deselected, 189 subtests passed (60 s) | 66.82% | 1 passed |
+
+The hosted runner skips the sandbox integration tests, so it reports 21 skips against 4 on
+the unprivileged host above. Hosted CI does not establish KVM execution.
+
 ### Mutation check of the new guest-agent tests
 
 Seven deliberate faults were applied one at a time to a scratch copy of
@@ -273,8 +289,7 @@ was added to catch it.
 
 - Any Firecracker/KVM execution, the browser-profile gate, and a live-provider `ALLOW`.
 - The root job-image contract test (`mkfs.ext4`); CI runs it with root.
-- GitHub Actions on this branch: the workflow changes (matrix, lint job, coverage gate,
-  manual `supported-host.yml`) were validated by running each command locally and parsing the
-  YAML, not on a hosted runner.
+- The manual `supported-host.yml` workflow: it was parsed as YAML but never executed (it
+  needs a self-hosted KVM runner). The `ci.yml` changes did run on hosted runners (above).
 - The hash-pinned guest sources were not edited, so the pinned rootfs is unaffected;
   supported-host admission was not re-run to confirm that.
