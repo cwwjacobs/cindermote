@@ -4,6 +4,15 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
+# Tool caches and coverage output
+.venv/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.json
+htmlcov/
+
 # Local secrets and machine state
 .env
 .env.*
@@ -43,6 +52,10 @@ scratch/
 *.sqlite3
 *.pcap
 *.pcapng
+
+# Legacy snapshot, built from the host on first use (host-specific, ~25 MB)
+policy/golden-snapshot.tar.gz
+policy/golden-snapshot.manifest
 
 # Pinned runtime assets and generated microVM images
 .cindermote/cache/

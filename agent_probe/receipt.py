@@ -14,6 +14,7 @@ EXIT_EVIDENCE_FAILURE = 4
 EXIT_INVALID_RECEIPT = 5
 EXIT_CLEANUP_FAILURE = 6
 
+WITNESS_KEYS = frozenset({"guest_complete", "egress_complete", "cleanup_complete"})
 EXECUTION = {"COMPLETE", "INFRASTRUCTURE_FAILED"}
 GATES = {"ALLOW", "DENY", "RESCOPE_REQUIRED", "EVALUATION_INCOMPLETE"}
 CLEANUP = {"VERIFIED", "UNVERIFIED"}
@@ -73,7 +74,14 @@ def derive_exit_code(envelope: Any, observer_key: bytes) -> int:
         return EXIT_RUNTIME_FAILURE
     decision = receipt.get("gate_decision")
     if decision == "ALLOW":
-        if not all(receipt.get("witnesses", {}).values()):
+        # Missing evidence is failure: an absent or partial witness table must
+        # not satisfy ``all()`` vacuously.
+        witnesses = receipt.get("witnesses")
+        if (
+            not isinstance(witnesses, dict)
+            or set(witnesses) != WITNESS_KEYS
+            or any(value is not True for value in witnesses.values())
+        ):
             return EXIT_EVIDENCE_FAILURE
         return EXIT_ALLOW
     if decision in {"DENY", "RESCOPE_REQUIRED"}:

@@ -16,6 +16,17 @@ from .protocol import BOLO_TOOLS, PRIMARY_TOOLS, PROHIBITED_TOOLS, require_diges
 
 JOB_ID_RE = re.compile(r"^job-[0-9a-f]{16}$")
 TARGET_ID_RE = re.compile(r"^target-[0-9a-f]{16}\.skill$")
+HEX_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+
+# Publicly known or placeholder values. A receipt authenticated with one of
+# these proves nothing, so they are refused for both signing and verifying.
+PROHIBITED_STATIC_KEYS = frozenset({
+    b"cindermote-observer-key-32bytes!",
+    b"default_key",
+    b"secret",
+    b"password",
+    b"12345678901234567890123456789012",
+})
 
 DEFAULT_BUDGETS = {
     "wall_clock_sec": 60,
@@ -228,9 +239,26 @@ def build_road_frozen(manifest: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _constant_time_equal(left: Any, right: Any) -> bool:
+    """Compare two ASCII strings without raising on hostile input types.
+
+    ``hmac.compare_digest`` raises ``TypeError`` for non-str operands and for
+    str operands containing non-ASCII characters. A verifier that handles
+    attacker-supplied receipts must report "invalid", not crash.
+    """
+
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    if not left.isascii() or not right.isascii():
+        return False
+    return hmac.compare_digest(left, right)
+
+
 def sign_envelope(payload: dict[str, Any], payload_type: str, key: bytes) -> dict[str, Any]:
     if not isinstance(key, bytes) or len(key) < 32:
         raise ContractError("observer key must be at least 32 bytes")
+    if key in PROHIBITED_STATIC_KEYS:
+        raise ContractError("observer key is a prohibited static default")
     digest = sha256_hex(payload)
     signature = hmac.new(key, bytes.fromhex(digest), hashlib.sha256).hexdigest()
     return {
@@ -247,26 +275,38 @@ def sign_envelope(payload: dict[str, Any], payload_type: str, key: bytes) -> dic
 
 
 def verify_envelope(envelope: Any, key: bytes, expected_type: str | None = None) -> bool:
+    """Return True only for a well-formed envelope authenticated by ``key``.
+
+    Every malformed input yields ``False``; this function never raises on
+    attacker-controlled envelope contents.
+    """
+
     if not isinstance(envelope, dict) or set(envelope) != {"envelope_version", "payload_type", "payload_sha256", "payload", "signature"}:
         return False
     if envelope.get("envelope_version") != "cindermote.signed-envelope/v1":
         return False
     if expected_type is not None and envelope.get("payload_type") != expected_type:
         return False
-    if not isinstance(key, bytes) or len(key) < 32:
+    if not isinstance(key, bytes) or len(key) < 32 or key in PROHIBITED_STATIC_KEYS:
         return False
     try:
         digest = sha256_hex(envelope["payload"])
     except Exception:
         return False
-    if not hmac.compare_digest(digest, envelope.get("payload_sha256", "")):
+    claimed_digest = envelope.get("payload_sha256")
+    if not isinstance(claimed_digest, str) or HEX_DIGEST_RE.fullmatch(claimed_digest) is None:
+        return False
+    if not _constant_time_equal(digest, claimed_digest):
         return False
     signature = envelope.get("signature")
     if not isinstance(signature, dict) or set(signature) != {"algorithm", "key_id", "signature_hex"}:
         return False
+    signature_hex = signature.get("signature_hex")
+    if not isinstance(signature_hex, str) or HEX_DIGEST_RE.fullmatch(signature_hex) is None:
+        return False
     expected = hmac.new(key, bytes.fromhex(digest), hashlib.sha256).hexdigest()
     return (
         signature.get("algorithm") == "HMAC-SHA256"
-        and signature.get("key_id") == hashlib.sha256(key).hexdigest()[:32]
-        and hmac.compare_digest(expected, signature.get("signature_hex", ""))
+        and _constant_time_equal(signature.get("key_id"), hashlib.sha256(key).hexdigest()[:32])
+        and _constant_time_equal(expected, signature_hex)
     )
