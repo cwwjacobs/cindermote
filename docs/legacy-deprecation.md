@@ -1,7 +1,7 @@
 # Deprecation Notice: Legacy Namespace Isolation Profile
 
 **Effective Date:** July 2026  
-**Status:** Deprecated (Planned Removal: Cindermote v3.0)  
+**Status:** Deprecated (no removal date committed)  
 **Affected Profile:** `python-script` / `mote/detonate.py` namespace isolation (chroot + seccomp + ptrace + cgroups)
 
 ---
@@ -41,7 +41,7 @@ cindermote detonate /path/to/payload.py python-script
 **New (Firecracker Agent-Probe):**
 ```bash
 export CINDERMOTE_AGENT_PROBE_API_KEY_FD=3
-export CINDERMOTE_AGENT_PROBE_ENDPOINT="https://api.openai.example.com/v1"
+export CINDERMOTE_AGENT_PROBE_ENDPOINT="https://api.openai.example.com/v1/chat/completions"
 export CINDERMOTE_AGENT_PROBE_MODEL="gpt-4o"
 
 cindermote detonate /path/to/target.skill agent-probe 3< /path/to/api_key.txt
@@ -63,14 +63,23 @@ from cindermote.agent_probe.contract import ModelConfig
 
 result = run_agent_probe(
     target_path="target.skill",
-    model=ModelConfig("openai-compatible", "gpt-4o", "https://api.openai.example.com/v1"),
+    model=ModelConfig("openai-compatible", "gpt-4o", "https://api.openai.example.com/v1/chat/completions"),
     api_key=bytearray(b"sk-..."),
 )
 ```
 
 ---
 
-## Support Timeline
+## Current behavior and timeline
 
-- **v2.x**: Deprecation warnings emitted on legacy execution (`DeprecationWarning` + `legacy_namespace_deprecation` log event). Legacy profile remains active for backwards compatibility.
-- **v3.0**: Legacy namespace runner removed. Firecracker microVM execution becomes mandatory.
+- **Today (1.0.x):** the legacy profile still works and is the engine behind the
+  Cinder Incident Gate. `cindermote detonate <artifact> <legacy-type>` prints a
+  deprecation notice on stderr. The other legacy entry points
+  (`incident-gate`, `mote/detonate.py`, `detonate()`) do not.
+- **As root** the runner now requires a writable cgroup v2 mount and is denied
+  otherwise (cgroup v1 or hybrid hosts). **As a normal user** it runs in the
+  explicit `degraded-user` mode without cgroups or mlock, and receipts record that.
+- **Removal:** not scheduled. An earlier draft named v3.0, but no release numbering
+  beyond 1.x exists. Removal will be announced in [CHANGELOG.md](../CHANGELOG.md) at
+  least one minor release ahead. Firecracker execution is mandatory for agent-probe
+  and browser-probe today.

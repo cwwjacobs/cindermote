@@ -6,8 +6,9 @@ Cindermote is the successor product and repository identity to **Motefield**.
 
 Motefield was an earlier private project by the same author. Its source is not
 public. Cindermote was forked from Motefield commit
-`584ab11ea054efb233d057b64c342846ed201592`, which is the value recorded in
-Ash Receipt `provenance` fields.
+`584ab11ea054efb233d057b64c342846ed201592`. An early receipt prototype recorded
+that value in a `provenance` field; the prototype was removed and no current
+receipt records it.
 
 ## Lineage
 

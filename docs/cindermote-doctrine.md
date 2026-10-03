@@ -28,7 +28,7 @@ A full replay is preserved as sealed evidence without becoming trusted-agent con
 | **Cinder** | Operator-requested termination when no automatic Collapse occurred |
 | **Burn** | The teardown mechanism used after Collapse or Cinder |
 | **Ash** | The minimal surviving trusted evidence after Burn |
-| **Ash Receipt** | The authenticated evidence bundle produced after Burn |
+| **Ash Receipt** | The signed, metadata-only receipt produced after Burn. Implemented as the signed envelopes in `agent_probe/receipt.py` and `observer/receipt.py` |
 | **Seam** | Any path crossing a trust boundary |
 | **Broker** | A host-owned capability gate between guest and host |
 | **Collapse Mesh** | The complete set of deterministic collapse cues |
@@ -36,7 +36,7 @@ A full replay is preserved as sealed evidence without becoming trusted-agent con
 | **Capability Manifest** | What each component may do |
 | **Seam Registry** | Every known path crossing trust boundaries |
 | **Boundary Ledger** | What is trusted, untrusted, brokered, sealed, or prohibited |
-| **Claim Matrix** | What Cindermote can and cannot honestly claim |
+| **Claim Matrix** | What Cindermote can and cannot honestly claim. Kept as the *Current status* table and *Scope and limits* in `README.md` |
 
 ## Kernel Laws
 

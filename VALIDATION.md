@@ -207,3 +207,74 @@ until the supported-host command is rerun on final main and its signed receipt,
 execution status, cleanup status, witnesses, and gate decision are checked.
 Root authentication is currently unavailable in this validation session.
 No browser-profile E2E or live-provider ALLOW result is claimed.
+
+## 2026-10-03 — unreleased tree after the Week 1–3 hardening (branch `claude/pensive-ramanujan-2wsvyu`)
+
+Base commit `ed82ef5` plus the commits on this branch. The counts below were recorded
+on the working tree immediately before it was committed. No Firecracker or KVM
+execution was possible, so this entry validates portable behavior only.
+
+### Environment
+
+| Item | Value |
+|---|---|
+| Host | Firecracker-VM container, Linux 6.18.44, x86_64; **no `/dev/kvm`** |
+| cgroups | v1/hybrid: `/sys/fs/cgroup` is a **tmpfs**, cgroup2 is mounted at `/sys/fs/cgroup/unified` |
+| PID 1 | reaps orphaned zombies only after about 1.9 s |
+| Python | 3.11.15 (system), 3.12.3 and 3.13.14 (virtualenvs); `cryptography` 49.0.0 / 50.0.2, `pytest` 9.1.1 |
+| Checkout | copy of the working tree, `chmod -R go-w`, `umask 022`; non-root user for the unprivileged runs |
+
+### Starting point, measured in the same environment
+
+| Run | Result |
+|---|---|
+| Documented pytest command as root, commit `ed82ef5` | 247 passed, **2 failed**, 23 skipped, 1 deselected, 129 subtests passed (35 s) |
+| Same, non-root, clean permissions | 266 passed, **1 failed**, 5 skipped, 1 deselected, 129 subtests passed (146 s) |
+
+The failures were `test_surviving_group_descendant_is_killed_and_invalidates_telemetry`
+(zombie reaping latency against a 0.5 s recheck, both runs) and, as root only,
+`test_privileged_benign_traces_validated_child_inside_exact_cgroup` (the legacy runner
+accepted the tmpfs at `/sys/fs/cgroup` as a cgroup hierarchy). Both are fixed.
+
+### Results on this tree
+
+| # | Command | Result |
+|---|---|---|
+| 1 | `python3 -m compileall -q .` | exit 0 |
+| 2 | `python3 tests/test_vertical_spine.py` | 15 run, 14 passed, 1 skipped (no `/dev/kvm`) |
+| 3 | `ruff check .` | all checks passed |
+| 4 | `mypy` on the 16 files listed in `ci.yml` | no issues |
+| 5 | `python3 cli.py kernel-laws` | PASS (6 seams, 12 capabilities, 8 cues, 15 components) |
+| 6 | non-root, Python 3.11.15: `python3 -m pytest -q tests --deselect=…job_image… --cov` | **446 passed, 4 skipped, 1 deselected**, 189 subtests passed (139 s); coverage 68.1% |
+| 7 | same, Python 3.12.3 | **446 passed, 4 skipped, 1 deselected**, 189 subtests passed (106 s); coverage 68.2% |
+| 8 | same, Python 3.13.14 | **446 passed, 4 skipped, 1 deselected**, 189 subtests passed (136 s); coverage 68.1% |
+| 9 | CI worst case (sandbox integration classes deselected), 3.11 / 3.12 / 3.13 | 428 passed, 4 skipped, 19 deselected each (7 s); coverage 64.75% / 64.73% / 64.76% against `fail_under = 60` |
+| 10 | root, Python 3.11.15, same command with `--cov` | **427 passed, 23 skipped, 1 deselected**, 189 subtests passed (33 s); coverage 65.3% |
+
+Coverage counts every module under the repository, including ones no test imports
+(`guest/agent_probe_agent.py` was invisible to the earlier 66.6% figure and is now
+counted). The 4 skips in runs 6–8 are the opt-in browser KVM gate, the supported-host
+agent-probe test, the privileged cgroup test (now skipped on a host without a real
+cgroup v2 mount instead of failing), and `/dev/kvm` in the vertical spine. In run 10 the
+18 sandbox-admission skips are the same as at the starting point: a root run on this host
+cannot be admitted because it has no real cgroup v2 mount.
+
+### Mutation check of the new guest-agent tests
+
+Seven deliberate faults were applied one at a time to a scratch copy of
+`guest/agent_probe_agent.py` (trip mapped to `DENIED`, soft findings not counted,
+undeclared tool names passed to the host verbatim, token overrun ignored, incomplete token
+reporting ignored, provider failure treated as complete, target hash check skipped).
+`tests/test_agent_probe_guest.py` failed for all seven; the first run missed the
+undeclared-tool-name fault, and `test_model_chosen_tool_names_never_reach_the_host_verbatim`
+was added to catch it.
+
+### Not run
+
+- Any Firecracker/KVM execution, the browser-profile gate, and a live-provider `ALLOW`.
+- The root job-image contract test (`mkfs.ext4`); CI runs it with root.
+- GitHub Actions on this branch: the workflow changes (matrix, lint job, coverage gate,
+  manual `supported-host.yml`) were validated by running each command locally and parsing the
+  YAML, not on a hosted runner.
+- The hash-pinned guest sources were not edited, so the pinned rootfs is unaffected;
+  supported-host admission was not re-run to confirm that.
