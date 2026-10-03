@@ -13,7 +13,7 @@ PROJECT_DIR = THIS_FILE.parents[1]
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from cindermote.mflog import StructuredLogger, configure, get_logger, get_run_id, set_run_id
+from cindermote.mflog import configure, get_logger, set_run_id
 
 
 def test_get_logger_caches_instances():
@@ -58,7 +58,7 @@ def test_severity_filtering():
     log.info("info_event", "Should not appear")
     log.warn("warn_event", "Should appear")
 
-    lines = [l for l in buf.getvalue().strip().split("\n") if l]
+    lines = [line for line in buf.getvalue().strip().split("\n") if line]
     assert len(lines) == 1
     record = json.loads(lines[0])
     assert record["event"] == "warn_event"
@@ -103,9 +103,9 @@ def test_all_severity_levels():
     log.error("e", "error")
     log.fatal("f", "fatal")
 
-    lines = [l for l in buf.getvalue().strip().split("\n") if l]
+    lines = [line for line in buf.getvalue().strip().split("\n") if line]
     assert len(lines) == 5
-    severities = [json.loads(l)["severity"] for l in lines]
+    severities = [json.loads(line)["severity"] for line in lines]
     assert severities == ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
 
 

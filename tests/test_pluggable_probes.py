@@ -16,7 +16,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 from canaries.probe_base import ProbeBase, ProbeExpectation
 from canaries.registry import discover_probes, instantiate_probes
-from incident_gate import CINDER_PROBES, load_discovered_probes
+from incident_gate import load_discovered_probes
 
 
 def test_discover_probes_returns_probe_classes():
