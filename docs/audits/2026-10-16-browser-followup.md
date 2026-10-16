@@ -13,6 +13,7 @@ sequence when its expected `ALLOW` was not met.
 | Candidate 2 / `mf-web-2cd1473a` | The guest reached `Page.navigate` but returned bounded `navigation_err_network_changed`. | `FAIL`; signed `DENY`, incomplete browser/CDP evidence; purge verified. |
 | Candidate 3 / `mf-web-0bf4c540` | After the IPv4-only guest change, real Chromium committed the fixture navigation with its sandbox active. Five Google background requests were blocked; one allowed fixture tunnel was still open when the proxy stopped, so egress reported telemetry loss. | `FAIL`; signed `DENY`, incomplete egress evidence; purge verified. |
 | Candidate 4 / `mf-web-a2a77316` | A bounded browser shutdown drain let the proxy record the fixture tunnel's normal close. Navigation, attestation, screenshot hashing, and all four evidence streams completed. Five Chromium startup requests to unauthorized Google origins were blocked by the proxy. | `FAIL`; signed `DENY`, **telemetry complete**, purge verified. The gate expected a clean-case `ALLOW` and did not run the remaining four cases. |
+| Committed source / `mf-web-b91adb3e` | Repeated the candidate-4 result against exact source commit `801b8037eaac04601a5ca9d8df7cf8f07b729c51`; the gate's checkout, asset, and source provenance check passed. | `FAIL`; signed `DENY`, all four streams complete, purge verified. Five unauthorized background attempts remained blocked. |
 
 The candidate-4 receipt reports the browser sandbox active, a read-only rootfs,
 guest writes on tmpfs, VM admission, and externally verified teardown. Its
@@ -48,10 +49,11 @@ A second build from the same pinned inputs reproduced both hashes exactly
 using the local Docker cache. That comparison establishes repeatability here,
 not an independent cold-cache or third-party rebuild.
 
-The local verifier checked each of the three gate and job HMACs with the
+The local verifier checked each of the four gate and job HMACs with the
 host-only observer key, validated the receipt and evidence schemas, checked
 the receipt-to-evidence SHA-256 bindings, and recomputed the evidence
-reduction. All checks passed. Selected byte-for-byte copies and a checksum
+reduction. It also rechecked the committed run against that exact checkout.
+All checks passed. Selected byte-for-byte copies and a checksum
 index are in the [public follow-up bundle](evidence/2026-10-16-browser-followup/README.md).
 The originals, build logs, encrypted/private state, control token, observer
 key, and raw Chromium diagnostic log remain local under `.cindermote/` or

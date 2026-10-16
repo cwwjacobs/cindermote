@@ -1,0 +1,50 @@
+{
+  "browser": {
+    "binary_sha256": "08dffb86626ed3274a48d62ac7683adec98f75b1e21638816cd7d4e8cfc542f0",
+    "sandbox_gid": 0,
+    "sandbox_mode": "04755",
+    "sandbox_required": true,
+    "sandbox_uid": 0,
+    "version": "Chromium 150.0.7871.124 built on Debian GNU/Linux 12 (bookworm)"
+  },
+  "build_inputs": {
+    "base_image_digest": "sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
+    "chromium_package_version": "150.0.7871.124-1~deb12u1",
+    "debian_snapshot": "20260716T110000Z",
+    "e2fsdroid_sha256": "5acfcba27c1a362a9df97879100910d79014090c1ef999a7bc9d7a74998fa0b4",
+    "e2fsprogs_package_version": "1.47.0-2+b2",
+    "fakeroot_package_version": "1.31-1.2",
+    "platform_tools_sha256": "ab885c20f1a9cb528eb145b9208f53540efa3d26258ac3ce4363570a0846f8f7",
+    "platform_tools_url": "https://dl.google.com/android/repository/platform-tools_r33.0.3-linux.zip"
+  },
+  "directory_hash_seed": "11111111-2222-3333-4444-555555555555",
+  "filesystem_uuid": "7a1c357e-64a8-4ef8-9cb1-7a2fd676dd10",
+  "guest_writes": "tmpfs_only",
+  "rootfs": {
+    "read_only_runtime": true,
+    "sha256": "a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c",
+    "size_mib": 1536
+  },
+  "runtime_packages": {
+    "libsodium23": "1.0.18-1+deb12u1",
+    "python3-cryptography": "38.0.4-3+deb12u1"
+  },
+  "schema_version": "cindermote.browser-rootfs/v1",
+  "source_date_epoch": 1784160000,
+  "sources": {
+    "agent_probe/__init__.py": "9e72adcdea15bced831925612820a7a329dec270e8b53df11fcca6f3cb6a9128",
+    "agent_probe/canonical.py": "13f02ea0223cb03a2f0cd1d289f6e2e55a72119f767b85c99fc1607b38522fc7",
+    "agent_probe/evidence.py": "c43884339dff9dbab5b5da3aca4d33d72e3f11096ee362c71872a1a2b2a04295",
+    "agent_probe/hpke.py": "9f42f1e655f9fede7fc08ad0b62c2a20a7c01372753f453f365820982a35bdb5",
+    "agent_probe/protocol.py": "4ea56c9907a2e8794ed7f57641975f96bddefb3477d7b3dd245ca292fc5cdfff",
+    "agent_probe/secretstream.py": "111376f5b2bacfd61d277641936fae19ecd9b10853954db4d83c66b122dd05af",
+    "guest/agent_probe_agent.py": "f0210336b98c17880cf7588e93c72ecb8f40ab92c6f929aae9188d1f8d8656fa",
+    "guest/browser_agent.py": "1031e32dc800af3f181fffbe029f9f4cb8503ff658519203131a1eb3dc44a860",
+    "guest/cindermote-init": "e98eb60c8b99c45d843a0f986d56d661ef6b86b81198249ac6c00a66d4d101c4",
+    "images/firecracker/Containerfile": "1720da696fbbe1deb0c7ccc5eff9d8bc60b21858025c2854ffa3b67cfecac1ff",
+    "images/firecracker/RootfsToolchain.Containerfile": "b1fba2b7feb6a35b94715be20c4c9a1d5bdc5b5adb31f3eae4e435fa7eab251d",
+    "mote/browser_contract.py": "3600a33d977ce9892745b27824b294dddcfe96d144a9568bbbeae1f23ee7e934",
+    "scripts/build-firecracker-image.sh": "e3790dd5753122f59657f80748ccee2c84822ef5e2311bf65e741f26115fecf3",
+    "scripts/build-rootfs-in-toolchain.sh": "57d65d4ebc1fd4af9970466d027b40ad19fd8a504efc727795769c21087b20c8"
+  }
+}

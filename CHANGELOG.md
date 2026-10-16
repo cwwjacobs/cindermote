@@ -40,7 +40,7 @@ imported them.
 
 ### Added
 
-- Controlled-fixture browser follow-up with three retained signed failures,
+- Controlled-fixture browser follow-up with four retained signed failures,
   local HMAC/schema/reduction verification, public checksums, and clear
   command-line instructions for creating and inspecting runs. The five-case
   gate still fails at its clean case because Chromium makes blocked background

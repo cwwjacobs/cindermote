@@ -115,7 +115,8 @@ archive remain local; public HMAC receipts cannot be independently
 authenticated without the host's private observer key.
 
 The [browser follow-up](docs/audits/2026-10-16-browser-followup.md) retained
-three successive signed failure receipts. The final run demonstrates real
+four successive signed failure receipts, including one bound to the exact
+source commit. The final run demonstrates real
 navigation and complete browser, CDP, egress, and VM observation, but the
 controlled-fixture gate remains `FAIL`: blocked Chromium startup requests
 produce an honest `DENY`. The [follow-up proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md)

@@ -481,7 +481,7 @@ fixture, and the gate checked that both returned the expected source hash.
 The fixture token, observer HMAC key, and raw Chromium diagnostic log stayed
 local.
 
-Three retained signed failure attempts show progress without a fabricated
+Four retained signed failure attempts show progress without a fabricated
 pass. Candidate 2 failed guest navigation with the bounded code
 `navigation_err_network_changed`. Candidate 3 loaded the page inside a jailed
 Firecracker VM with Chromium's sandbox active, but one allowed fixture proxy
@@ -491,12 +491,16 @@ rootfs read-only, guest tmpfs writes, and externally verified purge were
 recorded. Five background Chromium requests to unauthorized Google origins
 were blocked. The signed receipt is therefore `DENY`, and the clean-case gate
 result is `FAIL`. The remaining four fixture cases were not run.
+The fourth attempt repeated this result against exact source commit
+`801b8037eaac04601a5ca9d8df7cf8f07b729c51`; its gate provenance
+check passed and its signed receipt again reported complete telemetry,
+verified purge, and `DENY` for five blocked background attempts.
 
 The candidate-4 rootfs and build receipt hashes are
 `a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c`
 and `75e713f326a1384efd29ab4bb5f3cdf0d63261f2cb3420eaed688e37541c234b`.
 A second build from the same pinned inputs and local Docker cache reproduced
-both hashes. Local verification checked all three gate/receipt HMACs, schemas,
+both hashes. Local verification checked all four gate/receipt HMACs, schemas,
 evidence-file SHA-256 bindings, and reductions. The public bundle carries
 selected byte-for-byte copies and its own SHA-256 index; the observer key is
 not published, so external authentication is not claimed.
