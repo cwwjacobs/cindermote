@@ -8,7 +8,7 @@ from pathlib import Path
 from cindermote.agent_probe.broker import AgentProbeBroker
 from cindermote.agent_probe.contract import ModelConfig, verify_envelope
 from cindermote.agent_probe.evidence import GuestEvidenceSealer
-from cindermote.agent_probe.firecracker_runtime import AgentProbeRuntimeResult
+from cindermote.agent_probe.firecracker_runtime import AgentProbeRuntimeResult, _failure_context
 from cindermote.agent_probe.hpke import generate_key_pair
 from cindermote.agent_probe.protocol import digest_bytes
 from cindermote.agent_probe.receipt import (
@@ -158,6 +158,61 @@ def test_unexpected_runtime_exception_zeroes_key_and_persists_signed_failure_rec
     road_walked = json.loads(Path(result.road_walked_path).read_text(encoding="utf-8"))
     assert road_walked["runtime_failure_code"] == "RUNTIME_UNEXPECTED_ERROR"
     assert road_walked["runtime_failure"] == {"exception": "RuntimeError", "errno": None}
+
+
+def test_caught_firecracker_failure_keeps_only_bounded_diagnostics_in_signed_road(tmp_path: Path) -> None:
+    observer = b"o" * 32
+    target = tmp_path / "target.skill"
+    marker = "SECRET_HOST_PATH_MUST_NOT_LEAK"
+    target.write_text("synthetic payload", encoding="utf-8")
+    failure = FileNotFoundError(errno.ENOENT, f"/host/{marker}")
+
+    def failing_runtime(**kwargs):
+        return AgentProbeRuntimeResult(
+            runtime_job_id="mf-web-01234567",
+            guest_result=None,
+            broker_events=[],
+            egress_events=[],
+            egress_telemetry={},
+            runtime={"admitted": False},
+            purge={
+                "verified_externally": True,
+                "processes_reaped": True,
+                "cgroup_removed": True,
+                "network_namespace_removed": True,
+                "ram_jail_removed": True,
+                "egress_worker_reaped": True,
+                "credential_revoked": False,
+                "ciphertext_persisted": False,
+            },
+            evidence_path=None,
+            evidence_sha256=None,
+            failure_code="UNEXPECTED_RUNTIME_FAILURE",
+            failure_context=_failure_context("api_ready", failure),
+        )
+
+    api_key = bytearray(b"fresh-secret")
+    result = run_agent_probe(
+        target,
+        model=ModelConfig("openai-compatible", "model", "https://api.example.com/v1/chat/completions"),
+        api_key=api_key,
+        observer_key=observer,
+        quarantine_public_key=b"p" * 32,
+        quarantine_key_id="a" * 32,
+        quarantine_dir=tmp_path / "quarantine",
+        receipt_dir=tmp_path / "receipts",
+        runtime=failing_runtime,
+    )
+    assert api_key == bytearray(len(api_key))
+    assert verify_envelope(result.envelope, observer, "cindermote.agent-probe-receipt/v1")
+    assert result.envelope["payload"]["execution_status"] == "INFRASTRUCTURE_FAILED"
+    assert result.envelope["payload"]["cleanup_status"] == "VERIFIED"
+    road_walked = json.loads(Path(result.road_walked_path).read_text(encoding="utf-8"))
+    assert road_walked["runtime_failure"] == {
+        "stage": "api_ready", "exception": "FileNotFoundError", "errno": errno.ENOENT,
+    }
+    for path in (result.receipt_path, result.road_frozen_path, result.road_walked_path, result.road_diff_path):
+        assert marker not in Path(path).read_text(encoding="utf-8")
 
 
 def test_read_exact_key_accepts_raw_key_ending_in_whitespace(tmp_path: Path) -> None:

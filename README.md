@@ -3,7 +3,8 @@
 Post-1.0.0 main (`1.0.1.dev0`); no new release has been published. The
 [1.0.0 release](https://github.com/cwwjacobs/cindermote/releases/tag/v1.0.0)
 predates the fail-closed repairs below and its notes call its legacy gate
-unreliable. Use main.
+unreliable. Use main for the current source; the supported-host result below
+is bounded to the audited commit and host, not a new release claim.
 
 Cindermote is a collapse-ready runtime for handling untrusted
 agent material inside disposable Firecracker microVMs. Only bounded
@@ -38,8 +39,10 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
   no signal. `ALLOW` leaves the artifact on `HOLD`; it is never a safety verdict.
 - Receipts are HMAC-SHA256 signed with a host-local key. They prove integrity to
   whoever holds that key, not to a third party.
-- A real microVM run has been demonstrated on one host with a dummy provider key
-  (`EVALUATION_INCOMPLETE`). A live-provider `ALLOW` has never been demonstrated.
+- A jailed Firecracker agent run completed on the audited Void host with a
+  deliberately invalid provider key. Its guest, egress, and cleanup witnesses
+  verified, but the gate was `EVALUATION_INCOMPLETE`. A live-provider `ALLOW`
+  has never been demonstrated.
 
 ## Current status
 
@@ -53,9 +56,10 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
 | Capability broker and collapse mesh | Reference models only; **not wired to any entry point** | `tests/test_vertical_spine.py` 06, `tests/test_cindermote_spine.py`, [FIELD_ATLAS](docs/FIELD_ATLAS.md) |
 | Declared registries (seams, capabilities, cues, components) | Checked against the tree by `cindermote kernel-laws` | `tests/test_kernel_laws.py` |
 | Host-native MCP execution (init, `tools/list`, `tools/call`, vertical run) | **Disabled in this baseline**; calls raise `HostNativeExecutionDisabled` | `tests/test_vertical_spine.py` 01–05 |
-| Supported-host KVM agent-probe | Real Firecracker execution demonstrated on the pre-merge branch; final-main revalidation pending | [Validation record](VALIDATION.md); `tests/test_agent_probe_supported_host.py`; manual workflow `.github/workflows/supported-host.yml` (not yet run) |
-| Browser-profile KVM / live-provider ALLOW | **Not demonstrated** | Opt-in browser gate and live-provider tests remain unrun |
-| Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated; snapshot startup and hostile-probe classification repaired; incomplete observation fails closed; as root it now requires a real cgroup v2 mount | [Regression tests](tests/test_incident_gate.py), [validation](VALIDATION.md), [deprecation](docs/legacy-deprecation.md) |
+| Supported-host KVM agent-probe | On Void `6.18.57_1`, root preflight passed all 24 checks and one jailed run completed with guest, egress, and cleanup witnesses verified. The invalid provider key kept the gate incomplete. | [Validation record](VALIDATION.md), [audit](docs/audits/2026-10-16-security-audit.md), [published evidence](docs/audits/evidence/2026-10-16/README.md) |
+| Browser-profile KVM | A public-site smoke admitted a jailed VM and verified purge, then returned `DENY` with incomplete telemetry. The controlled-fixture gate remains unrun. | [Audit](docs/audits/2026-10-16-security-audit.md), [published evidence](docs/audits/evidence/2026-10-16/README.md) |
+| Live-provider agent `ALLOW` | **Not demonstrated** | The supported-host run intentionally used an invalid provider key. |
+| Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated; snapshot startup was repaired and six hostile probes completed with `DENY`, signed receipts, and verified cleanup on the audited host. Incomplete observation fails closed; root runs require real cgroup v2. | [Regression tests](tests/test_incident_gate.py), [audit](docs/audits/2026-10-16-security-audit.md), [deprecation](docs/legacy-deprecation.md) |
 
 ## Design invariants
 
@@ -97,19 +101,36 @@ modules that claimed more than they did, made receipt verification total
 mount before the legacy runner reports cgroup limits, and made the doctrine
 registries and `kernel-laws` check real rather than self-fulfilling.
 
+The [2026-10-16 audit](docs/audits/2026-10-16-security-audit.md) fixed a
+Void snapshot loader failure, bounded archive links, corrected containment
+failure labels, repaired job-image formatting permissions and the isolated
+egress worker's interpreter selection, and updated the browser gate to read
+current v2 evidence. CI now pins official Actions and direct tooling, avoids
+persisting checkout credentials, and adds Dependabot and CodeQL workflows.
+The [published evidence bundle](docs/audits/evidence/2026-10-16/README.md)
+contains signed agent receipts and road traces for two failures and the
+completed run, browser smoke evidence, legacy verifier outputs, and the full
+portable test summary. The encrypted guest evidence and the host-specific
+archive remain local; public HMAC receipts cannot be independently
+authenticated without the host's private observer key.
+
 Follow the [regression tests](tests/test_incident_gate.py),
 [runner failure tests](tests/test_agent_probe_runner.py),
 [mount-proof tests](tests/firecracker/test_firecracker_runtime.py),
 [CI workflow](.github/workflows/ci.yml), and [validation record](VALIDATION.md).
 Hosted CI checks portable behavior and the root job-image contract; it does
-not establish supported-host KVM execution. The validation record distinguishes
-historical branch receipts from evidence for the final merged commit.
+not establish supported-host KVM execution. The host run covered audited code
+at local commit `0526265`; the published branch carries the same runtime code
+with later documentation and evidence additions. A new release needs its own
+claim boundary.
 
 ## Known issues and remaining limitations
 
-- **Final-main supported-host validation is pending.** The recorded branch
-  microVM runs do not prove the shipped HEAD. Root authentication is required
-  to rerun the agent-probe check and verify its signed receipts on this host.
+- **Supported-host proof is bounded.** Root preflight and jailed execution
+  passed on one Void host for local audit commit `0526265`. The public bundle
+  contains receipts and hashes, while the private HMAC key and encrypted guest
+  evidence stay on that host. A later main commit or release is not itself a
+  fresh supported-host run.
 - **Browser-profile KVM E2E is unverified.** It needs an operator-controlled
   public HTTPS fixture with a DNS-named certificate.
 - **Live-provider ALLOW is unverified.** No live credential was used in the
@@ -129,24 +150,23 @@ historical branch receipts from evidence for the final merged commit.
   source and needs a rootfs rebuild and re-pin ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Host and file permissions matter.** Clone with `umask 022` (Debian and Ubuntu
   default to 002) or run `chmod -R go-w .`; trusted source gates reject
-  group-writable files and say which file. The dedicated egress worker must be
-  able to traverse the Python stdlib path. Follow [RUNBOOK.md](RUNBOOK.md) for
+  group-writable files and say which file. The dedicated egress worker selects
+  a trusted system Python when available; a fallback interpreter still needs
+  a traversable standard-library path. Follow [RUNBOOK.md](RUNBOOK.md) for
   pinned assets, RAM mounts, service identities, and host preparation.
 
 ## Main commands
 
 Requirements: Linux, Python 3.11, 3.12 or 3.13 (all three run in CI), system
-`libsodium`, and `pip install pytest pytest-cov cryptography`. Linting needs
-`ruff` and `mypy`.
+`libsodium`, and the pinned `requirements/ci-test.txt` dependencies. Linting
+uses the pinned `requirements/ci-lint.txt` dependencies.
 
 ```bash
 # Verify import compilation
 python3 -m compileall -q .
 
-# Full portable test suite with the coverage gate (what CI runs, minus one root-only test)
-python3 -m pytest -q tests \
-  --deselect=tests/test_agent_probe_runtime_protocol.py::test_job_image_copies_opaque_target_without_parsing \
-  --cov --cov-report=term-missing:skip-covered
+# Full portable test suite with the coverage gate (CI also repeats the image contract as root)
+python3 -m pytest -q tests --cov --cov-report=term-missing:skip-covered
 
 # Lint, types, and the doctrine registry check
 ruff check .
@@ -158,6 +178,10 @@ python3 tests/test_vertical_spine.py
 # See what an evidence run looks like (no KVM needed; unprivileged is fine)
 ./bin/cindermote incident-gate doctor
 ./bin/cindermote incident-gate run
+
+# Recheck the manifest hashes, receipt schemas, and all HMAC signatures
+./scripts/verify-incident-gate-evidence.py \
+  --expect-all receipts/incident-gate/<run-id>
 
 # Package a source release
 ./scripts/package-release.sh
@@ -175,6 +199,10 @@ Recorded results and the commits they cover are in [VALIDATION.md](VALIDATION.md
 - `MIGRATION_FROM_MOTEFIELD.md` — Active surface rename record.
 - `NAMING.md` — Product and codebase naming rules.
 - `VALIDATION.md` — Recorded verification runs and status.
+- `docs/audits/2026-10-16-security-audit.md` — Latest defensive audit,
+  remediations, retained failures, and exact Firecracker proof boundaries.
+- `docs/audits/evidence/2026-10-16/README.md` — Public proof bundle,
+  checksums, and limits of third-party verification.
 - `CHANGELOG.md` — What changed, including removals and behavior changes.
 - `CONTRIBUTING.md` — Setup, checks, and the hash-pinned guest sources.
 - `SECURITY.md` — Reporting a vulnerability and what is in scope.

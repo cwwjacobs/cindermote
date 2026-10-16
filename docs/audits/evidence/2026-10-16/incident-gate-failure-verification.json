@@ -1,0 +1,57 @@
+{
+  "child_receipts": [
+    {
+      "index": 0,
+      "job_id": "mf-run-a40b671d",
+      "path": "receipts/mf-run-a40b671d.json",
+      "sha256": "eaae2ac8976ec3c18a0c83cf4733328f16d096f489338129a861c084a3e26a3a",
+      "valid": true
+    },
+    {
+      "index": 1,
+      "job_id": "mf-run-9ba8c810",
+      "path": "receipts/mf-run-9ba8c810.json",
+      "sha256": "e5e55767283a41d3c064faac711563167b099116e2dae5f038b5c8e42a9e952f",
+      "valid": true
+    },
+    {
+      "index": 2,
+      "job_id": "mf-run-e3d04fcd",
+      "path": "receipts/mf-run-e3d04fcd.json",
+      "sha256": "c88a0ffa095bb7fa523423fee7ad2ade333cfd7ce1fe51907be8c8106d5fe0a7",
+      "valid": true
+    },
+    {
+      "index": 3,
+      "job_id": "mf-run-61436ce7",
+      "path": "receipts/mf-run-61436ce7.json",
+      "sha256": "3295fe9239c5707fb38edb36d9dd3e1ae04487c031174d7fa12cc48696382ea7",
+      "valid": true
+    },
+    {
+      "index": 4,
+      "job_id": "mf-run-eaa80710",
+      "path": "receipts/mf-run-eaa80710.json",
+      "sha256": "800d11b2ab586b1a1cbaeab90ea28ffffe75a29d5d2de382927085849d565da4",
+      "valid": true
+    },
+    {
+      "index": 5,
+      "job_id": "mf-run-95e05d38",
+      "path": "receipts/mf-run-95e05d38.json",
+      "sha256": "a759f24874956cae1b4538fef89c736ba2a2752686c8e9ffccf48f618e323880",
+      "valid": true
+    }
+  ],
+  "errors": [],
+  "manifest_sha256": "e52d4456a27c28d151a4c03593bbcabf452690545f0dfeb32c7cbff68a18dc41",
+  "overall_status": null,
+  "report_sha256": "7644c261022b867b668877211300e2369dc22ffb4641146cff0a0bb03b8c8ba5",
+  "run_id": "run-20261016T065642Z-344a69dd",
+  "verification_version": 1,
+  "verified": true,
+  "verified_receipt_count": 6,
+  "warnings": [
+    "legacy manifest has no overall_status"
+  ]
+}

@@ -95,9 +95,23 @@ class AgentProbeRuntimeResult:
     evidence_path: str | None
     evidence_sha256: str | None
     failure_code: str
+    failure_context: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _failure_context(stage: str, exc: BaseException) -> dict[str, Any]:
+    """Retain only code-controlled diagnostics; exception messages can hold secrets."""
+
+    exception_name = type(exc).__name__
+    if not exception_name.isascii() or not exception_name.isidentifier():
+        exception_name = "OtherError"
+    return {
+        "stage": stage,
+        "exception": exception_name[:64],
+        "errno": exc.errno if isinstance(exc, OSError) and type(exc.errno) is int else None,
+    }
 
 
 def _persist_ciphertext_bundle(
@@ -400,6 +414,7 @@ def run_agent_probe_microvm(
     evidence_path: str | None = None
     evidence_sha256: str | None = None
     failure_code = "NONE"
+    failure_context: dict[str, Any] | None = None
     nonce = secrets.token_hex(32)
     deadline = time.monotonic() + manifest["budgets"]["wall_clock_sec"] + 10
     runtime_identity: dict[str, Any] = {
@@ -429,6 +444,7 @@ def run_agent_probe_microvm(
             except BaseException:
                 pass
 
+    stage = "runtime_assets"
     try:
         staged = runtime / "assets"
         staged.mkdir(parents=True, exist_ok=True)
@@ -446,6 +462,7 @@ def run_agent_probe_microvm(
             elif _sha256_file(destination) != expected:
                 raise AgentProbeRuntimeError("trusted RAM asset pool changed")
 
+        stage = "guest_images"
         paths.images.mkdir(parents=True, mode=0o500, exist_ok=False)
         os.chown(paths.images, vmm_uid, vmm_gid)
         paths.run.mkdir(parents=True, mode=0o700)
@@ -456,6 +473,7 @@ def run_agent_probe_microvm(
         if rootfs_sha != rootfs_receipt["rootfs"]["sha256"]:
             raise AgentProbeRuntimeError("guest rootfs changed while staged")
 
+        stage = "job_image"
         wrapper = {
             "profile": "agent-probe/v0",
             "manifest": manifest,
@@ -482,6 +500,7 @@ def run_agent_probe_microvm(
             (paths.run / name).touch(mode=0o600)
         os.chown(paths.run, vmm_uid, vmm_gid)
 
+        stage = "network_setup"
         network_attempted = True
         _setup_network(paths, vmm_uid, vmm_gid)
         memory_max = (manifest["budgets"]["ram_mib"] + 512) * 1024 * 1024
@@ -504,6 +523,7 @@ def run_agent_probe_microvm(
             "--",
             "--api-sock", "/run/firecracker.socket",
         ]
+        stage = "jailer_launch"
         stdout_handle = (paths.run / "jailer.stdout").open("wb", buffering=0)
         stderr_handle = (paths.run / "jailer.stderr").open("wb", buffering=0)
         old_core_limit = resource.getrlimit(resource.RLIMIT_CORE)
@@ -522,12 +542,14 @@ def run_agent_probe_microvm(
             stdout_handle.close()
             stderr_handle.close()
 
+        stage = "api_ready"
         api_deadline = min(deadline, time.monotonic() + 5)
         while not paths.api_socket.exists() and time.monotonic() < api_deadline:
             if process.poll() is not None:
                 raise AgentProbeRuntimeError("jailer/Firecracker exited before API readiness")
             time.sleep(0.01)
         client = FirecrackerApiClient(paths.api_socket, timeout_sec=2)
+        stage = "api_version"
         version = client.get_json("/version")
         if version.get("firecracker_version") != lock["firecracker"]["version"]:
             raise AgentProbeRuntimeError("Firecracker API version differs from lock")
@@ -542,8 +564,10 @@ def run_agent_probe_microvm(
             ("/vsock", {"guest_cid": 3, "uds_path": "/run/vsock"}),
             ("/network-interfaces/agent0", {"iface_id": "agent0", "guest_mac": "06:00:ac:1e:00:02", "host_dev_name": "tap0", "mtu": 1500}),
         ):
+            stage = "api_config_" + endpoint.strip("/").replace("/", "_").replace("-", "_")
             client.put_json(endpoint, payload, expected_status=204)
 
+        stage = "proxy_setup"
         proxy_request = make_probe_request(
             manifest["model"]["pinned_endpoint"],
             authorized_origins=[manifest["model"]["pinned_origin"]],
@@ -580,9 +604,12 @@ def run_agent_probe_microvm(
             max_calls=manifest["budgets"]["max_broker_calls"],
             revoke=revoke_egress,
         )
+        stage = "guest_start"
         client.put_json("/actions", {"action_type": "InstanceStart"}, expected_status=204)
+        stage = "guest_connect"
         channel, buffered = _connect_agent_guest(paths, nonce, deadline)
         try:
+            stage = "guest_control"
             guest_result = _run_control_loop(
                 channel,
                 buffered,
@@ -595,8 +622,10 @@ def run_agent_probe_microvm(
             )
         finally:
             channel.close()
+        stage = "guest_evidence"
         if guest_result["evidence_bundle"] is None:
             raise AgentProbeRuntimeError("guest failed before sealing evidence")
+        stage = "evidence_persist"
         evidence_path, evidence_sha256 = _persist_ciphertext_bundle(
             quarantine, manifest["job_id"], guest_result["evidence_bundle"]
         )
@@ -615,6 +644,7 @@ def run_agent_probe_microvm(
             }
         )
     except BaseException as exc:
+        failure_context = _failure_context(stage, exc)
         failure_code = type(exc).__name__
         if failure_code not in {
             "AgentProbeRuntimeError",
@@ -680,6 +710,7 @@ def run_agent_probe_microvm(
         evidence_path=evidence_path,
         evidence_sha256=evidence_sha256,
         failure_code=failure_code,
+        failure_context=failure_context,
     )
 
 

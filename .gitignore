@@ -19,6 +19,7 @@ htmlcov/
 !.env.example
 !.env.*.example
 .observer_key
+policy/agent-probe-quarantine.x25519.pub
 .tainted_hosts
 .decommissioned_hosts
 gate/override.json
@@ -64,4 +65,3 @@ policy/golden-snapshot.manifest
 
 # Generated release packages
 dist/
-

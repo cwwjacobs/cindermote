@@ -178,6 +178,10 @@ def build_road_walked(
                 else None
             ),
         }
+    elif runtime_result is not None and runtime_result.failure_context is not None:
+        # The Firecracker runtime emits only code-controlled stage names,
+        # exception classes and numeric errno; no exception message is saved.
+        walked["runtime_failure"] = runtime_result.failure_context
     return walked
 
 

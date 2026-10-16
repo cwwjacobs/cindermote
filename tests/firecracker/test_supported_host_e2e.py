@@ -15,6 +15,7 @@ from tests.firecracker.e2e_supported_host import (
     case_request,
     collect_gate_provenance,
     run_gate,
+    validate_browser_evidence,
     verify_gate_provenance,
 )
 
@@ -133,6 +134,17 @@ class GateProvenanceTests(unittest.TestCase):
 
 
 class SupportedHostGateContractTests(unittest.TestCase):
+    def test_gate_accepts_current_host_owned_browser_evidence(self) -> None:
+        evidence = {
+            "evidence_version": "cindermote.browser-evidence/v2",
+            "events": [],
+            "streams": {
+                source: {"complete": False, "event_count": 0}
+                for source in ("browser", "cdp", "egress", "vm")
+            },
+        }
+        self.assertEqual(validate_browser_evidence(evidence), evidence)
+
     def test_rerun_invalidates_an_older_gate_before_input_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "firecracker-e2e-gate.json"

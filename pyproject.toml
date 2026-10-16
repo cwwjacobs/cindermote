@@ -27,7 +27,7 @@ warn_unused_configs = true
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "*/__pycache__/*"]
+omit = ["tests/*", "*/__pycache__/*", ".venv/*"]
 
 [tool.coverage.report]
 # Count modules that no test imports (guest/ and broker/ have no __init__.py).

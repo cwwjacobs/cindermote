@@ -293,3 +293,181 @@ was added to catch it.
   needs a self-hosted KVM runner). The `ci.yml` changes did run on hosted runners (above).
 - The hash-pinned guest sources were not edited, so the pinned rootfs is unaffected;
   supported-host admission was not re-run to confirm that.
+
+## 2026-10-16 — local defensive audit and Void host repair
+
+Fresh clone of `cwwjacobs/cindermote` at base commit
+`2a2a2671008512e1ecd77ba0af2c207a27a280dd`; the audited changes are the tree
+containing this entry. Environment: Void Linux, kernel `6.18.56_1` x86_64,
+CPython 3.13.16 in `.venv`, non-root user. The physical KingFast drive was
+mounted at `/run/media/operator/Storage`; its migration backup contained the
+exact Firecracker cache whose four asset hashes match
+`policy/firecracker-assets.lock.json`.
+
+### Preserved failure and repair proof
+
+The first real Incident Gate run is retained at
+`receipts/incident-gate/run-20261016T065642Z-344a69dd`. All six signed child
+receipts are structurally and cryptographically valid, but every result is
+`EVALUATION_INCOMPLETE`: the chrooted interpreter could not find
+`libpthread.so.0`. Isolation and purge were still recorded true. This was not
+counted as containment success.
+
+Snapshot construction was repaired to preserve safe host library aliases such
+as `/usr/lib64 -> lib`. The rebuilt local snapshot has SHA-256
+`bcc366cc562dd54d2433e9f8e77923bb80c53e37f3c2bc1ec96ec99e4e536e2a`.
+The next run is retained at
+`receipts/incident-gate/run-20261016T070335Z-7351c694`: all six hostile probes
+completed, were classified hostile, received `DENY`, met their detector-rule
+expectations, confirmed isolation, and verified purge.
+
+`scripts/verify-incident-gate-evidence.py` independently re-read the success
+run against `policy/hotcell-policy.json` and the local observer key. It verified
+all 6/6 child schemas, HMAC signatures, manifest hashes, and job identities.
+The success manifest hash is
+`895003da7cf4a60bfe23f94225fecf577d7b5115f7a849c155c0295d94f51111`;
+the Markdown report hash is
+`a17abcae0242cec5a562b67b0b24ed1308d9680848278479ddfb4b3093cb84c8`.
+The verifier also authenticated all 6/6 receipts in the failed run, preserving
+that failure with the same standard of evidence.
+
+### Final local checks
+
+| Command or check | Result |
+|---|---|
+| `python -m compileall` over project sources | exit 0 |
+| `ruff check .` | all checks passed |
+| `mypy` on the CI typed core plus the new verifier | no issues |
+| `python cli.py kernel-laws` | PASS: 6 seams, 12 capabilities, 8 cues, 15 components |
+| `python tests/test_vertical_spine.py` against the real host | 15/15 passed, including `/dev/kvm` presence |
+| full documented pytest command with coverage | **451 passed, 3 skipped, 1 deselected; 191 subtests passed** in 111.42 s; 68.24% coverage |
+| targeted snapshot/fail-closed integration after repair | 9 passed, 49 deselected |
+| `pip-audit --local` | 46 installed distributions checked; no known vulnerabilities found |
+| Bandit over production Python sources | 36 findings: 1 high, 7 medium, 28 low; high finding reviewed as the RFC 6455-mandated SHA-1 WebSocket accept calculation, not a security digest |
+
+The pre-repair full-suite baseline was **432 passed, 18 skipped, 1 deselected;
+189 subtests passed**, with 67.07% project coverage after correcting the
+virtual-environment omission. The repair converted the 15 locally runnable
+sandbox skips to execution and added four regression tests.
+
+### Firecracker claim boundary
+
+The cached `firecracker` and `jailer` binaries both identify as v1.16.1. Fresh
+preflight verifies the pinned Firecracker, jailer, vmlinux-6.1.155, and browser
+rootfs hashes, plus read/write access to `/dev/kvm` and `/dev/net/tun`.
+
+A separate networkless, non-jailer smoke run used the exact pinned kernel and
+read-only rootfs. Firecracker reported a successful microVM start; guest serial
+output identified KVM, mounted the ext4 root read-only, and executed
+`/sbin/cindermote-init`. The init then failed as expected because this bounded
+smoke configuration deliberately supplied neither `eth0` nor the `/dev/vdb`
+job drive; the guest panicked and Firecracker shut down cleanly with exit 0.
+The serial log SHA-256 is
+`356bfd9e96257edf2a38a9b2275d18b93f6220872ad034f3bf29eeeaaf03e707`.
+
+At this pre-host checkpoint, the production Cindermote Firecracker profile was
+**not ready**: this
+managed environment is read-only and `nosuid`, has a zero capability bounding
+set, the dedicated service identities and RAM runtime have not been created,
+one swap device is active, the cgroup mount is read-only, and tmpfs `noswap`
+has not been proven. No jailer, TAP network, job-drive, browser, or agent-probe
+end-to-end success is claimed. The root-required job-image contract was also
+not run locally.
+
+The detailed finding ledger and evidence inventory are in
+`docs/audits/2026-10-16-security-audit.md`. Machine-readable evidence is kept
+under `.cindermote/audit/2026-10-16/`; it is intentionally gitignored because
+it contains host-specific reports. The two append-only Incident Gate run trees
+are likewise gitignored.
+
+## 2026-10-16 — host admission follow-up
+
+Corey rebooted into `6.18.57_1`, disabled the unused 15 GiB swapfile, and ran
+`scripts/prepare-firecracker-host.sh` in a normal root terminal. The supplied
+`mote/detonate.py --firecracker-preflight` result for the browser profile has
+`ready=true` and all 24 required checks passing. It verifies pinned assets,
+dedicated locked VMM/proxy identities, `/dev/kvm`, `/dev/net/tun`, root-owned
+RAM mounts with `noswap`, disabled host swap, delegated cgroup v2, and required
+host commands. A separate direct operator-account check confirms the new
+kernel, no active swap, and the `noswap` runtime mount; it exits 2 for
+root-only checks as designed.
+
+This superseded the earlier host-admission limitation above. At this point,
+jailed Firecracker execution, TAP networking, the read-only job drive, sealed
+agent evidence, and purge still required validation. The later follow-up below
+records the live runs. The machine-specific checkpoint is retained in
+`.cindermote/audit/2026-10-16/host-root-preflight-user-supplied.md`.
+
+The first privileged agent-probe run then failed: `1 failed in 5.28s`. It
+created a signed receipt for `job-4d8fcdd89ab3ce1a`, but the receipt payload
+reported `execution_status=INFRASTRUCTURE_FAILED`; no encrypted guest evidence
+file appeared. The test stopped before asserting cleanup. Corey copied the
+root-owned receipt and road files into `.cindermote/audit/2026-10-16/`.
+Independent verification found both envelope signatures valid and all three
+receipt-to-road hashes matching. The signed receipt says cleanup was verified,
+while guest and egress witnesses were false. The road trace gives only
+`UNEXPECTED_RUNTIME_FAILURE`, so the failed stage is still unknown. The full
+console output and a bounded failure account remain in the audit directory.
+
+After this failure, a local non-root test exposed a separate job-image defect:
+the image was mode `0444` before `mkfs.ext4` wrote it. Formatting now uses
+mode `0600`, then switches to `0444`; the affected test and six other focused
+tests pass, with the supported-host test skipped without root. The next
+privileged attempt was configured to print only a bounded failure stage,
+exception class, and numeric errno if it failed again.
+
+## 2026-10-16 — jailed runtime and browser smoke follow-up
+
+The second root agent-probe test failed in 5.26 seconds. Its bounded signed
+road for `job-efad177c49dc0b70` records `proxy_setup` and
+`BrowserEgressWorkerProtocolError`; the receipt reports infrastructure
+failure. Both signatures and all three receipt-to-road hashes verify. An
+isolated root worker test returned the static `sandbox_failed` response.
+Staged diagnostics showed that the worker's Python was under the operator's
+mode-0700 home, where its dedicated UID could not lazily import the standard
+library after dropping privileges. The worker now selects a root-owned,
+non-writable `/usr/bin/python3` if it supports Python 3.11 or newer; the
+isolated worker then started and verified purge.
+
+The third root agent-probe test passed: `1 passed in 6.85s`. The synthetic
+target and intentionally invalid provider key produced `job-605f1a346b11ec76`
+with `execution_status=COMPLETE`, all guest/egress/cleanup witnesses true,
+`cleanup_status=VERIFIED`, and a sealed evidence file. The receipt SHA-256 is
+`35e3ad0d64900be78b3a6bf4208ff547886f183f84f7503ecb65ff4fe7835cc1`;
+the encrypted evidence SHA-256 is
+`a58a6c4e0afb0546e46fdc6aed075b68a39cd584ae63d322926a4fc22df455cf`.
+The copied receipt and frozen-road signatures, all road hashes, and the
+evidence job/root binding verify independently. Root inspection found no
+stale owned job tokens, named network namespace, or Firecracker/jailer/worker
+process. The guest status is `PROVIDER_FAILURE`, task incomplete, and gate
+`EVALUATION_INCOMPLETE` because the provider key was deliberately invalid;
+this does not establish a model-task `ALLOW` verdict.
+
+A separate root browser probe of public `https://example.com/` admitted a
+Firecracker VM and verified teardown, but its signed receipt returned `DENY`:
+five unauthorized Google-origin background requests were blocked and an
+egress telemetry-loss event made the trace incomplete. The receipt signature,
+evidence hash, and v2 reduction verify. This is a fail-closed smoke result,
+not a pass of the controlled-fixture browser gate. During verification, the
+gate's stale v1 evidence imports were corrected to use the current host v2
+validator and reducer; a regression test now covers the version.
+
+The machine-specific console outputs, copied signed receipts, encrypted
+evidence, and file hashes are under `.cindermote/audit/2026-10-16/`.
+`supported-host-verification.json` records the independent checks. The
+controlled-fixture browser gate and a live-provider agent `ALLOW` remain
+unverified.
+
+Final unprivileged suite after these repairs:
+
+```text
+python -m pytest -q tests --cov=. --cov-report=json:.cindermote/audit/2026-10-16/coverage-after-supported-host.json
+456 passed, 3 skipped, 191 subtests passed in 107.49s
+Total coverage: 67.32% (required: 60%)
+```
+
+Repository-wide Ruff, the 17-file typed core, Kernel Laws, Python compilation,
+and `git diff --check` also passed. The job-image contract now runs
+unprivileged, so CI no longer deselects it; CI still repeats that contract as
+root. The exact suite and coverage output is retained in
+`.cindermote/audit/2026-10-16/`.

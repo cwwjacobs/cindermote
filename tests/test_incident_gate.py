@@ -227,7 +227,15 @@ class TestEvidenceIsolation(unittest.TestCase):
 class TestReportGeneration(unittest.TestCase):
     """Test report generation from mock results."""
 
-    def _mock_result(self, name: str, held: bool) -> ProbeResult:
+    def _mock_result(
+        self,
+        name: str,
+        held: bool,
+        *,
+        observation_status: str = "COMPLETE",
+        isolation_confirmed: bool = True,
+        purge_verified: bool = True,
+    ) -> ProbeResult:
         return ProbeResult(
             name=name,
             description=f"Test probe {name}",
@@ -246,8 +254,9 @@ class TestReportGeneration(unittest.TestCase):
             expected_risk="hostile",
             expected_decision="DENY",
             expected_rules=frozenset({"network_exfil_attempt"}),
-            isolation_confirmed=True,
-            purge_verified=True,
+            isolation_confirmed=isolation_confirmed,
+            purge_verified=purge_verified,
+            observation_status=observation_status,
         )
 
     def test_report_contains_all_probes(self):
@@ -261,10 +270,33 @@ class TestReportGeneration(unittest.TestCase):
         report = generate_report(results)
         self.assertIn("ALL BOUNDARIES HELD", report)
 
-    def test_report_shows_breach(self):
+    def test_report_distinguishes_completed_test_failure(self):
         results = [self._mock_result("test_a", False)]
         report = generate_report(results)
-        self.assertIn("CONTAINMENT BREACH DETECTED", report)
+        self.assertIn("CONTAINMENT TEST FAILED", report)
+
+    def test_report_distinguishes_incomplete_evaluation(self):
+        results = [
+            self._mock_result(
+                "test_a",
+                False,
+                observation_status="EVALUATION_INCOMPLETE",
+            )
+        ]
+        report = generate_report(results)
+        self.assertIn("EVALUATION INCOMPLETE — FAIL CLOSED", report)
+        self.assertNotIn("BOUNDARY FAILURE DETECTED", report)
+
+    def test_report_identifies_observed_boundary_failure(self):
+        results = [
+            self._mock_result(
+                "test_a",
+                False,
+                isolation_confirmed=False,
+            )
+        ]
+        report = generate_report(results)
+        self.assertIn("BOUNDARY FAILURE DETECTED", report)
 
     def test_report_is_markdown(self):
         results = [self._mock_result("test_a", True)]
@@ -892,6 +924,42 @@ class TestSnapshotLibraryClosure(unittest.TestCase):
         if libc is None:
             self.skipTest("no libc.so.6 on this host")
         self.assertEqual(detonate._elf_soname(libc), "libc.so.6")
+
+    def test_host_library_aliases_stay_inside_snapshot(self):
+        detonate = incident_gate_module.detonate_module
+        host_aliases = [
+            path
+            for path in (Path("/lib"), Path("/lib64"), Path("/usr/lib64"))
+            if path.is_symlink()
+        ]
+        if not host_aliases:
+            self.skipTest("host has no merged-library aliases")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "usr/lib").mkdir(parents=True)
+            detonate._replicate_host_library_layout(root)
+            for host_alias in host_aliases:
+                copied = root / host_alias.relative_to("/")
+                self.assertTrue(copied.is_symlink())
+                self.assertTrue(copied.resolve().is_relative_to(root))
+
+    def test_safe_extract_rejects_link_escape(self):
+        detonate = incident_gate_module.detonate_module
+        for link_type in (tarfile.SYMTYPE, tarfile.LNKTYPE):
+            with self.subTest(link_type=link_type), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                archive_path = root / "hostile.tar.gz"
+                outside = root.parent / f"cindermote-link-escape-{uuid.uuid4().hex}"
+                member = tarfile.TarInfo("inside-link")
+                member.type = link_type
+                member.linkname = f"../../{outside.name}"
+                with tarfile.open(archive_path, "w:gz") as archive:
+                    archive.addfile(member)
+                extraction_root = root / "extract"
+                extraction_root.mkdir()
+                with self.assertRaises(detonate.IsolationSetupError):
+                    detonate._safe_extract(archive_path, extraction_root)
+                self.assertFalse(outside.exists())
 
     def test_copy_binary_closure_places_soname_aliases(self):
         detonate = incident_gate_module.detonate_module

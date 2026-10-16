@@ -24,9 +24,11 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from cindermote.mote.browser_contract import (  # noqa: E402
-    TELEMETRY_INCOMPLETE_FINDINGS,
     make_probe_request,
     normalize_origin,
+)
+from cindermote.mote.browser_evidence import (  # noqa: E402
+    TELEMETRY_INCOMPLETE_FINDINGS,
     reduce_browser_evidence,
     validate_browser_evidence,
 )

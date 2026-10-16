@@ -1,0 +1,101 @@
+{
+  "budget_exhausted": false,
+  "budgets_granted": {
+    "cpu_vcpu": 1,
+    "fs_writes": "RAM overlay only",
+    "ram_mib": 256,
+    "syscalls": "capped",
+    "wall_clock_sec": 8
+  },
+  "canaries_touched": {
+    "canary_cred_aws": "TOUCHED at t+1.487s",
+    "canary_cred_ssh": "TOUCHED at t+1.507s",
+    "canary_file": "untouched",
+    "canary_tmp": "untouched"
+  },
+  "capabilities": {
+    "denied": [],
+    "granted": [],
+    "requested": []
+  },
+  "destinations_attempted": {},
+  "detector_findings": [
+    {
+      "count": 3,
+      "rule_id": "cred_harvest_pattern",
+      "severity": "CRITICAL"
+    }
+  ],
+  "gate": {
+    "final_authority": "policy_gate_autonomous",
+    "final_decision": "DENY",
+    "human_gate_override": "none",
+    "override_blocked_by_fail_closed": false,
+    "policy_gate_decision": "DENY",
+    "policy_gate_reason": "known_bad_behavior_detected"
+  },
+  "identity": {
+    "artifact_sha256": "be12869488b4ffbb36adfb90d2cf327591828335494623e4db87884260529cf0",
+    "artifact_type": "python-script",
+    "job_id": "mf-run-16601c06",
+    "received_at": "2026-10-16T07:03:45.047205+00:00",
+    "submitted_by": "cinder-incident-gate"
+  },
+  "isolation": {
+    "cgroups_used": false,
+    "mlock_used": false,
+    "mode": "degraded-user",
+    "namespace_used": true,
+    "seccomp_loaded": true
+  },
+  "observation": {
+    "diagnostic": "",
+    "exec_observed": true,
+    "failure_class": null,
+    "status": "COMPLETE"
+  },
+  "outward_report": {
+    "canaries_tripped": [
+      "canary_cred_aws",
+      "canary_cred_ssh"
+    ],
+    "capabilities_requested": [],
+    "destinations": [],
+    "evidence": [
+      {
+        "count": 3,
+        "rule_id": "cred_harvest_pattern",
+        "tap_category": "cred_access"
+      }
+    ],
+    "risk_level": "hostile",
+    "uncertainty": 0.0
+  },
+  "purge": {
+    "cgroup_empty": true,
+    "cgroup_removed": true,
+    "job_directory_removed": true,
+    "job_mount_removed": true,
+    "method": "SIGKILL + process-group/cgroup drain + mount/job-directory removal",
+    "process_group_empty": true,
+    "processes_remaining": 0,
+    "remaining_host_resources": [],
+    "verified_externally": true
+  },
+  "receipt_signature": "904992215be839bef0300ccdb7e230a0f2e55e8c42e32647b04d91aeca54f817",
+  "residual_uncertainty": 0.0,
+  "snapshot_policy": {
+    "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+    "policy_version": "cindermote-hotcell-v1.3",
+    "snapshot_sha256": "bcc366cc562dd54d2433e9f8e77923bb80c53e37f3c2bc1ec96ec99e4e536e2a",
+    "snapshot_verified_by": "host-observer (external)"
+  },
+  "telemetry_incomplete": false,
+  "telemetry_summary": {
+    "dns_attempts": 0,
+    "exec_spawns": 1,
+    "fs_mutations": 0,
+    "source": "ptrace + seccomp (read-only, host side)",
+    "syscall_events": 347
+  }
+}

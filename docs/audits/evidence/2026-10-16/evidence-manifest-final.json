@@ -1,0 +1,69 @@
+{
+  "captured_at_utc": "2026-10-16T08:27:40.820814+00:00",
+  "claim": "Jailed agent-probe runtime completed with invalid provider key; live model ALLOW and controlled-fixture browser gate remain unverified.",
+  "files": [
+    {
+      "bytes": 2144,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/evidence-manifest-root-failure.json",
+      "sha256": "629c3bfb0d85eaae8c1799de4965afb1057f61878aa96872314b95bcd13f081e"
+    },
+    {
+      "bytes": 8050,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/supported-host-verification.json",
+      "sha256": "165752c4f77f880e12afdd93113698ad39c8f5a3843907a0b038f4e63bf650fd"
+    },
+    {
+      "bytes": 970,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/pytest-after-supported-host.txt",
+      "sha256": "8207a850b16d03ff7729e4d1bbf69a81fb6e573d9c0dd4925d13fd7b51445655"
+    },
+    {
+      "bytes": 461088,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/coverage-after-supported-host.json",
+      "sha256": "1de16a4f214e37626af24b5004e7e943a877d29337a69eede759653ac6608aa8"
+    },
+    {
+      "bytes": 120,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/pytest-post-worker-fix-focused.txt",
+      "sha256": "70861564e81ec92621596823c0351dba59753c78e6a3e7f75a1f068b4f909d41"
+    },
+    {
+      "bytes": 1000,
+      "mode": "0600",
+      "path": ".cindermote/audit/2026-10-16/agent-probe-supported-host-console-third-run.txt",
+      "sha256": "3fbb42fb9c28a64c5efdef802101bcf73c023f5015d599ca2dff9a1db0726ac7"
+    },
+    {
+      "bytes": 388,
+      "mode": "0600",
+      "path": ".cindermote/audit/2026-10-16/browser-public-smoke-console.txt",
+      "sha256": "e9bd30700dcc5bc1e943944a4a688cfb604348f94003e18e82345c13fe2bd19d"
+    },
+    {
+      "bytes": 15135,
+      "mode": "0644",
+      "path": "docs/audits/2026-10-16-security-audit.md",
+      "sha256": "4ba85237fe5fc60962e3b7138447140d8ef6e5d902bac1c24e82aa83c026c414"
+    },
+    {
+      "bytes": 27244,
+      "mode": "0644",
+      "path": "VALIDATION.md",
+      "sha256": "5fb052bca9f940c0b56b2af9ab05b2b8e5b66682cb98ecabf0394bfdfc697851"
+    }
+  ],
+  "full_suite": {
+    "coverage_percent": 67.32,
+    "passed": 456,
+    "skipped": 3,
+    "subtests_passed": 191
+  },
+  "git_branch": "aven/security-audit-2026-10-16",
+  "git_head": "052626559d0f0dc0a9bb55446bd6f441fa3e887f",
+  "schema_version": "cindermote.audit-final-checkpoint/v1"
+}
