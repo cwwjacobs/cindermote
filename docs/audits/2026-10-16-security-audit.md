@@ -1,5 +1,10 @@
 # Defensive security audit — 2026-10-16
 
+**Later same-day follow-up:** the [controlled-fixture browser audit](2026-10-16-browser-followup.md)
+records actual jailed Chromium navigation and complete evidence, along with
+the still-failing clean-case gate. Statements below that the controlled
+fixture was unrun describe the earlier audit checkpoint.
+
 ## Scope and claim boundary
 
 This audit started from a fresh clone of `cwwjacobs/cindermote` at

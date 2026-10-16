@@ -2,9 +2,10 @@
 """Operator-controlled HTTPS fixture for the Firecracker competition gate.
 
 Run this on a publicly reachable host behind DNS names covered by the supplied
-certificate.  The browser profile intentionally rejects private/special IPs,
-so silently redirecting the production probe to localhost would not exercise
-the real egress boundary.
+certificate, or on loopback behind an HTTPS tunnel with public DNS names. The
+browser profile intentionally rejects private/special IPs, so silently
+redirecting the production probe to localhost would not exercise the real
+egress boundary.
 """
 
 from __future__ import annotations
@@ -53,6 +54,14 @@ def _origin(value: str) -> str:
     port = parsed.port
     authority = parsed.hostname.lower() if port in {None, 443} else f"{parsed.hostname.lower()}:{port}"
     return f"https://{authority}"
+
+
+def _validate_listener_binding(bind: str, port: int, primary_origin: str) -> None:
+    public_port = urlsplit(primary_origin).port or 443
+    if public_port != port and bind not in {"127.0.0.1", "::1"}:
+        raise ValueError(
+            "a different public HTTPS port requires a loopback-only listener"
+        )
 
 
 class FixtureState:
@@ -244,8 +253,7 @@ def main() -> int:
     unauthorized = _origin(args.unauthorized_origin)
     if primary == unauthorized:
         raise SystemExit("fixture origins must be distinct")
-    if (urlsplit(primary).port or 443) != args.port:
-        raise SystemExit("primary origin port does not match listener port")
+    _validate_listener_binding(args.bind, args.port, primary)
     token = _read_token(args.control_token_file)
     source_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     state = FixtureState(token, primary, unauthorized, source_sha256)

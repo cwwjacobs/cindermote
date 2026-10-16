@@ -19,6 +19,16 @@ mount -t tmpfs -o nosuid,nodev,noexec,size=128m,mode=1777 tmpfs /tmp
 mount -t tmpfs -o nosuid,nodev,noexec,size=256m,mode=1777 tmpfs /dev/shm
 mount -t tmpfs -o nosuid,nodev,noexec,size=256m,mode=0700,uid=1000,gid=1000 tmpfs /home/probe
 
+# The guest has only an IPv4 route to the host proxy. Prevent a delayed IPv6
+# link-local address transition from invalidating Chromium's in-flight
+# navigation, and keep the unused protocol outside the guest egress surface.
+for interface in all default eth0; do
+  control="/proc/sys/net/ipv6/conf/$interface/disable_ipv6"
+  if [ -e "$control" ]; then
+    printf '1\n' > "$control"
+  fi
+done
+
 ip link set lo up
 ip link set eth0 up
 ip address add 172.30.0.2/30 dev eth0

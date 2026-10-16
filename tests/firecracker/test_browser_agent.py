@@ -23,6 +23,8 @@ from guest.browser_agent import (  # noqa: E402
     CDP_SETUP_COMMANDS,
     AgentError,
     Evidence,
+    ProbeFailure,
+    _failure_code,
 )
 from mote.browser_contract import make_probe_request  # noqa: E402
 
@@ -64,6 +66,10 @@ def _paused(resource_type: Any = "Document", method: str = "GET") -> dict[str, A
 
 
 class PassiveResourceBoundaryTests(unittest.TestCase):
+    def test_failure_code_does_not_echo_untrusted_error_text(self) -> None:
+        self.assertEqual(_failure_code(AgentError("url and page text")), "agent_error")
+        self.assertEqual(_failure_code(ProbeFailure("navigation_no_loader")), "navigation_no_loader")
+
     def test_authorized_document_get_is_the_explicit_passive_case(self) -> None:
         cdp, websocket, evidence = _cdp()
 
@@ -117,6 +123,25 @@ class PassiveResourceBoundaryTests(unittest.TestCase):
                         for event in evidence.events
                     )
                 )
+
+    def test_only_exact_authorized_favicon_get_is_passive_other(self) -> None:
+        for url, method, expected in (
+            ("https://example.com/favicon.ico", "GET", "Fetch.continueRequest"),
+            ("https://example.com/favicon.ico?x=1", "GET", "Fetch.failRequest"),
+            ("https://example.com/favicon.ico", "POST", "Fetch.failRequest"),
+            ("https://elsewhere.example/favicon.ico", "GET", "Fetch.failRequest"),
+            ("https://example.com/other.ico", "GET", "Fetch.failRequest"),
+        ):
+            with self.subTest(url=url, method=method):
+                cdp, websocket, evidence = _cdp()
+                paused = _paused("Other", method)
+                paused["params"]["request"]["url"] = url
+                cdp.handle_event(paused)
+                self.assertEqual(websocket.sent[-1]["method"], expected)
+                if expected == "Fetch.continueRequest":
+                    self.assertFalse(
+                        any(event["kind"] == "active_interaction" for event in evidence.events)
+                    )
 
 
 class AutoAttachBoundaryTests(unittest.TestCase):

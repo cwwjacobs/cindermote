@@ -1760,6 +1760,22 @@ def run_browser_probe(
         finally:
             channel.close()
         if guest_result.get("error") is not None:
+            failure_stage = guest_result.get("failure_stage")
+            if isinstance(failure_stage, str) and failure_stage in {
+                "request_validation", "chromium_start", "devtools_ready",
+                "cdp_setup", "navigation", "page_load", "attestation",
+                "screenshot", "teardown",
+            }:
+                runtime_identity["guest_failure_stage"] = failure_stage
+            failure_code = guest_result.get("failure_code")
+            if isinstance(failure_code, str) and (
+                failure_code in {
+                    "deadline", "cdp_navigation_command", "navigation_error_text",
+                    "navigation_no_loader", "agent_error", "io_error", "unexpected_error",
+                }
+                or re.fullmatch(r"navigation_err_[a-z0-9_]{1,64}", failure_code)
+            ):
+                runtime_identity["guest_failure_code"] = failure_code
             raise FirecrackerRuntimeError("guest probe reported a bounded execution failure")
         if set(guest_result) != {
             "type",
