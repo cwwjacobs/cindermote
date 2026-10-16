@@ -1201,7 +1201,9 @@ def _prepare_job_image(
                 os.close(descriptor)
             destination.chmod(0o444)
 
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+        # mkfs.ext4 needs write access while constructing the image as an
+        # unprivileged user. Lock it down to read-only only after formatting.
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             os.ftruncate(descriptor, image_size_mib * 1024 * 1024)
         finally:

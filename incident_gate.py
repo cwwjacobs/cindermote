@@ -723,6 +723,16 @@ def run_doctor() -> dict[str, Any]:
 # Report generation
 # ---------------------------------------------------------------------------
 
+def _overall_status(results: list[ProbeResult]) -> str:
+    if all(result.containment_held for result in results):
+        return "ALL_BOUNDARIES_HELD"
+    if any(not result.isolation_confirmed or not result.purge_verified for result in results):
+        return "BOUNDARY_FAILURE_DETECTED"
+    if any(result.error or result.observation_status != "COMPLETE" for result in results):
+        return "EVALUATION_INCOMPLETE"
+    return "CONTAINMENT_TEST_FAILED"
+
+
 def generate_report(results: list[ProbeResult]) -> str:
     """Generate a Markdown report from probe results."""
     lines = [
@@ -738,8 +748,14 @@ def generate_report(results: list[ProbeResult]) -> str:
         "",
     ]
 
-    all_held = all(r.containment_held for r in results)
-    lines.append(f"**Overall: {'ALL BOUNDARIES HELD' if all_held else 'CONTAINMENT BREACH DETECTED'}**")
+    overall_status = _overall_status(results)
+    overall_labels = {
+        "ALL_BOUNDARIES_HELD": "ALL BOUNDARIES HELD",
+        "BOUNDARY_FAILURE_DETECTED": "BOUNDARY FAILURE DETECTED",
+        "EVALUATION_INCOMPLETE": "EVALUATION INCOMPLETE — FAIL CLOSED",
+        "CONTAINMENT_TEST_FAILED": "CONTAINMENT TEST FAILED",
+    }
+    lines.append(f"**Overall: {overall_labels[overall_status]}**")
     lines.append("")
     lines.append("| Probe | Risk | Decision | Isolation | Purge | Held |")
     lines.append("|-------|------|----------|-----------|-------|------|")
@@ -796,15 +812,22 @@ def generate_report(results: list[ProbeResult]) -> str:
 
     lines.append("## Containment Proof")
     lines.append("")
-    if all_held:
+    if overall_status == "ALL_BOUNDARIES_HELD":
         lines.append("Every probe was detonated through the real Cindermote sandbox.")
         lines.append("All hostile payloads were contained: network access was blocked by seccomp,")
         lines.append("credential access was denied by chroot, namespace escape was prevented,")
         lines.append("and all resources were verified as cleaned up after execution.")
         lines.append("")
         lines.append("The July 2026 attack chain would be interrupted at **every boundary**.")
+    elif overall_status == "BOUNDARY_FAILURE_DETECTED":
+        lines.append("❌ At least one directly observed isolation or purge boundary failed.")
+        lines.append("No containment claim is made; see the per-probe evidence above.")
+    elif overall_status == "EVALUATION_INCOMPLETE":
+        lines.append("⚠️ At least one payload observation did not complete, so this run is not")
+        lines.append("execution coverage. The gate failed closed and made no containment claim.")
     else:
-        lines.append("⚠️ Some boundaries did not hold. See details above.")
+        lines.append("❌ At least one completed probe did not satisfy its required risk,")
+        lines.append("decision, or detector-rule expectations. See the per-probe evidence above.")
 
     return "\n".join(lines)
 
@@ -900,6 +923,7 @@ def main(args: list[str] | None = None) -> int:
             "evidence_root": str(run_root),
             "probe_count": len(results),
             "all_contained": all(r.containment_held for r in results),
+            "overall_status": _overall_status(results),
             "child_receipts": child_receipts,
             "results": [
                 {
@@ -943,7 +967,16 @@ def main(args: list[str] | None = None) -> int:
             print(f"✅ All {len(results)} boundaries held. Evidence: {run_root}")
         else:
             failed = [r.name for r in results if not r.containment_held]
-            print(f"❌ Containment breached in: {', '.join(failed)}")
+            overall_status = _overall_status(results)
+            if overall_status == "BOUNDARY_FAILURE_DETECTED":
+                print(f"❌ Boundary failure detected in: {', '.join(failed)}")
+            elif overall_status == "EVALUATION_INCOMPLETE":
+                print(
+                    "⚠️ Evaluation incomplete; Cindermote failed closed for: "
+                    f"{', '.join(failed)}. Evidence: {run_root}"
+                )
+            else:
+                print(f"❌ Containment test failed in: {', '.join(failed)}")
         return 0 if all_held else 1
 
     else:

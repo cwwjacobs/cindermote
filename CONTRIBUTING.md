@@ -9,8 +9,13 @@ fail, and a failure to observe something is a failure, never a pass.
 Linux, Python 3.11, 3.12 or 3.13, system `libsodium`, and:
 
 ```bash
-python3 -m pip install pytest pytest-cov cryptography ruff mypy
+python3 -m pip install \
+  --requirement requirements/ci-test.txt \
+  --requirement requirements/ci-lint.txt
 ```
+
+The CI requirement files pin direct dependencies and CI installs wheels only.
+Dependabot checks both Python and GitHub Actions pins weekly.
 
 Clone with `umask 022`, or run `chmod -R go-w .` afterwards. Debian and Ubuntu
 default to umask 002, which makes files group-writable, and the trusted-source
@@ -25,9 +30,7 @@ python3 -m compileall -q .
 ruff check .
 mypy cli.py kernel_laws.py agent_probe/contract.py agent_probe/receipt.py   # full list in ci.yml
 python3 cli.py kernel-laws
-python3 -m pytest -q tests \
-  --deselect=tests/test_agent_probe_runtime_protocol.py::test_job_image_copies_opaque_target_without_parsing \
-  --cov --cov-report=term-missing:skip-covered
+python3 -m pytest -q tests --cov --cov-report=term-missing:skip-covered
 ```
 
 The coverage gate (`fail_under` in `pyproject.toml`) is a ratchet. Raise it when

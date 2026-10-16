@@ -515,6 +515,36 @@ def _copy_into_root(source: Path, root: Path, destination: Path | None = None) -
     return target
 
 
+def _replicate_host_library_layout(root: Path) -> None:
+    """Preserve safe merged-/usr aliases used by the host dynamic loader.
+
+    Some distributions expose ``/lib64`` and ``/usr/lib64`` as aliases of
+    ``/usr/lib``. Copying libraries only to their resolved paths loses that
+    topology, so the copied loader can start but cannot find its DT_NEEDED
+    objects inside the chroot. Recreate only aliases that resolve beneath a
+    known host library root, and make their targets relative inside the
+    snapshot.
+    """
+    library_roots = (Path("/lib"), Path("/lib64"), Path("/usr/lib"), Path("/usr/lib64"))
+    for host_link in (Path("/lib"), Path("/lib64"), Path("/usr/lib64")):
+        if not host_link.is_symlink():
+            continue
+        try:
+            resolved = host_link.resolve(strict=True)
+        except OSError:
+            continue
+        if not any(resolved == base or base in resolved.parents for base in library_roots):
+            continue
+
+        destination = root / host_link.relative_to("/")
+        target = root / resolved.relative_to("/")
+        target.mkdir(parents=True, exist_ok=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() or destination.is_symlink():
+            continue
+        destination.symlink_to(os.path.relpath(target, destination.parent))
+
+
 def _elf_links(path: Path) -> tuple[str | None, list[str]]:
     """Read PT_INTERP and DT_NEEDED without invoking an external utility."""
     try:
@@ -759,6 +789,7 @@ def bootstrap_snapshot() -> dict:
             "127.0.0.1 localhost cindermote\n::1 localhost\n", encoding="utf-8"
         )
 
+        _replicate_host_library_layout(root)
         python_binary = Path(sys.executable).resolve()
         _copy_binary_closure(python_binary, root, Path("usr/bin/python3"))
         stdlib = Path(sysconfig.get_path("stdlib")).resolve()
@@ -880,10 +911,20 @@ def _safe_extract(archive_path: Path, target: Path) -> None:
                 raise IsolationSetupError("snapshot contains a path traversal")
             if member.isdev() or member.isfifo():
                 raise IsolationSetupError("snapshot contains a special file")
+            if member.issym():
+                link_target = (destination.parent / member.linkname).resolve()
+                if link_target != root and root not in link_target.parents:
+                    raise IsolationSetupError("snapshot symlink escapes the extraction root")
+            elif member.islnk():
+                link_target = (target / member.linkname).resolve()
+                if link_target != root and root not in link_target.parents:
+                    raise IsolationSetupError("snapshot hard link escapes the extraction root")
         try:
             archive.extractall(target, filter="data")
         except TypeError:
-            archive.extractall(target)
+            # Python builds without extraction filters still receive the same
+            # path, special-file and link-target validation above.
+            archive.extractall(target)  # nosec B202
 
 
 def _write_control(control_fd: int, value: dict) -> None:

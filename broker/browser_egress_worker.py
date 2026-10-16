@@ -141,6 +141,44 @@ class BrowserEgressWorkerTimeout(BrowserEgressWorkerError):
     """A bounded worker lifecycle deadline expired."""
 
 
+def _worker_python() -> str:
+    """Prefer a trusted system interpreter whose stdlib survives the UID drop.
+
+    A venv under a private operator home can start as root, then lose access to
+    lazily imported stdlib modules after the child becomes cindermote-proxy.
+    The host interpreter and its /usr parents must be root-owned and not
+    group/world-writable, and it must support the worker source's Python
+    version; otherwise keep the existing interpreter.
+    """
+
+    candidate = Path("/usr/bin/python3")
+    try:
+        resolved = candidate.resolve(strict=True)
+        if resolved.parent != Path("/usr/bin"):
+            return sys.executable
+        for item in (Path("/usr"), Path("/usr/bin"), candidate, resolved):
+            metadata = item.stat()
+            if metadata.st_uid != 0 or metadata.st_mode & 0o022:
+                return sys.executable
+        if not stat.S_ISREG(resolved.stat().st_mode):
+            return sys.executable
+        probe = subprocess.run(
+            [
+                str(candidate), "-I", "-S", "-B", "-c",
+                "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={},
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return sys.executable
+    return str(candidate) if probe.returncode == 0 else sys.executable
+
+
 def _account_lock_check(user: str) -> tuple[bool, str]:
     try:
         entries = Path("/etc/shadow").read_text(encoding="utf-8").splitlines()
@@ -1280,7 +1318,7 @@ class BrowserEgressWorker:
     def _spawn(self, control_read: int, status_write: int) -> _ProcessLike:
         process = subprocess.Popen(
             [
-                sys.executable,
+                _worker_python(),
                 "-I",
                 "-S",
                 "-B",

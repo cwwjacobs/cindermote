@@ -13,6 +13,9 @@ python3 scripts/generate-agent-probe-keys.py \
 
 This creates `.observer_key` and
 `policy/agent-probe-quarantine.x25519.pub`. Secret files are ignored by git.
+If Incident Gate or another local profile already created `.observer_key`, add
+`--reuse-observer-key`. The generator validates and retains that signing key;
+it still requires both quarantine key files to be new.
 
 ## 2. Rebuild and deliberately pin the dual-profile rootfs
 

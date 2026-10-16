@@ -1,0 +1,246 @@
+{
+  "agent_probe_completed_runtime": {
+    "checks": {
+      "diff_hash": true,
+      "evidence_job": true,
+      "evidence_root": true,
+      "frozen_hash": true,
+      "frozen_signature": true,
+      "receipt_signature": true,
+      "walked_hash": true
+    },
+    "cleanup_status": "VERIFIED",
+    "execution_status": "COMPLETE",
+    "files": [
+      {
+        "bytes": 1208,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-605f1a346b11ec76.receipt.json",
+        "sha256": "35e3ad0d64900be78b3a6bf4208ff547886f183f84f7503ecb65ff4fe7835cc1"
+      },
+      {
+        "bytes": 1867,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-605f1a346b11ec76.road-frozen.json",
+        "sha256": "3434bf807c581ae0c4ba478949ee0bb14a332c8e629ecaee883644e9aa318369"
+      },
+      {
+        "bytes": 784,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-605f1a346b11ec76.road-walked.json",
+        "sha256": "23fb408485dbcc87f7de24ff6e7926df0d1cceeedcf6f8a91fe1a36d3628f01b"
+      },
+      {
+        "bytes": 629,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-605f1a346b11ec76.road-diff.json",
+        "sha256": "32ef67557293f98065685ba25441a23d8c69bdf6efabca234a9e55b2680f68a4"
+      },
+      {
+        "bytes": 4442,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-605f1a346b11ec76.guest-evidence.json.enc",
+        "sha256": "a58a6c4e0afb0546e46fdc6aed075b68a39cd584ae63d322926a4fc22df455cf"
+      }
+    ],
+    "gate_decision": "EVALUATION_INCOMPLETE",
+    "guest_status": "PROVIDER_FAILURE",
+    "job_id": "job-605f1a346b11ec76",
+    "runtime_failure": null,
+    "runtime_failure_code": "NONE",
+    "witnesses": {
+      "cleanup_complete": true,
+      "egress_complete": true,
+      "guest_complete": true
+    }
+  },
+  "agent_probe_first_failure": {
+    "checks": {
+      "diff_hash": true,
+      "frozen_hash": true,
+      "frozen_signature": true,
+      "receipt_signature": true,
+      "walked_hash": true
+    },
+    "cleanup_status": "VERIFIED",
+    "execution_status": "INFRASTRUCTURE_FAILED",
+    "files": [
+      {
+        "bytes": 1223,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-4d8fcdd89ab3ce1a.receipt.json",
+        "sha256": "9e7520cc2ebcbf453411bebb2d31653c0ca08814c30ece59642a3ae7b4e9386c"
+      },
+      {
+        "bytes": 1867,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-4d8fcdd89ab3ce1a.road-frozen.json",
+        "sha256": "f5e60ebf2063fc46881b472a539293f551db9432873f8f48dab304f4362b1fcc"
+      },
+      {
+        "bytes": 809,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-4d8fcdd89ab3ce1a.road-walked.json",
+        "sha256": "02b417aaca02f66a9269f5c404a06f304e6138002a6d6067ed6ac34ccff55b66"
+      },
+      {
+        "bytes": 629,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-4d8fcdd89ab3ce1a.road-diff.json",
+        "sha256": "0d74763bc4d1dbea5a36ea59d7b7e99e7d57f57aa57181ddb83a1560e443e3b8"
+      }
+    ],
+    "gate_decision": "EVALUATION_INCOMPLETE",
+    "guest_status": "EVALUATION_INCOMPLETE",
+    "job_id": "job-4d8fcdd89ab3ce1a",
+    "runtime_failure": null,
+    "runtime_failure_code": "UNEXPECTED_RUNTIME_FAILURE",
+    "witnesses": {
+      "cleanup_complete": true,
+      "egress_complete": false,
+      "guest_complete": false
+    }
+  },
+  "agent_probe_second_failure": {
+    "checks": {
+      "diff_hash": true,
+      "frozen_hash": true,
+      "frozen_signature": true,
+      "receipt_signature": true,
+      "walked_hash": true
+    },
+    "cleanup_status": "VERIFIED",
+    "execution_status": "INFRASTRUCTURE_FAILED",
+    "files": [
+      {
+        "bytes": 1223,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-efad177c49dc0b70.receipt.json",
+        "sha256": "c04149ed887e137cce4e4519a3ff7512e081a9e9fa867cfe19f925bea0cd649e"
+      },
+      {
+        "bytes": 1867,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-efad177c49dc0b70.road-frozen.json",
+        "sha256": "352d1c81bbb16cfe5026d1ae7e82867593fa4b770c9fb70bf2bf9f5ec7c5a536"
+      },
+      {
+        "bytes": 911,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-efad177c49dc0b70.road-walked.json",
+        "sha256": "629a6a45299d6d1ca87c62e3f72562721abf5b666503fe5645c43d7a1ebc721e"
+      },
+      {
+        "bytes": 629,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/job-efad177c49dc0b70.road-diff.json",
+        "sha256": "9a81eba05622d1987f94849a4bf502ee0045eb9ee8cf351eb47cacb82c2ca262"
+      }
+    ],
+    "gate_decision": "EVALUATION_INCOMPLETE",
+    "guest_status": "EVALUATION_INCOMPLETE",
+    "job_id": "job-efad177c49dc0b70",
+    "runtime_failure": {
+      "errno": null,
+      "exception": "BrowserEgressWorkerProtocolError",
+      "stage": "proxy_setup"
+    },
+    "runtime_failure_code": "UNEXPECTED_RUNTIME_FAILURE",
+    "witnesses": {
+      "cleanup_complete": true,
+      "egress_complete": false,
+      "guest_complete": false
+    }
+  },
+  "browser_public_smoke": {
+    "checks": {
+      "evidence_sha256": true,
+      "receipt_signature": true,
+      "reduction_reproduced": true
+    },
+    "cleanup_verified": true,
+    "files": [
+      {
+        "bytes": 9547,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/mf-web-2af9af0e.json",
+        "sha256": "7d51ca3edb0f5bfc4effce121f04002987869cbce0ba06ce068f7daa2a8b1f4f"
+      },
+      {
+        "bytes": 3034,
+        "mode": "0600",
+        "path": ".cindermote/audit/2026-10-16/mf-web-2af9af0e.browser-evidence.json",
+        "sha256": "f493e9e3f15589b745cc160b9ac9abef8d816395daea9e6e8ca9bda1c0450441"
+      }
+    ],
+    "finding_ids": [
+      "web_blocked_egress_attempt",
+      "web_egress_telemetry_loss",
+      "web_unauthorized_origin_attempt"
+    ],
+    "gate_decision": "DENY",
+    "job_id": "mf-web-2af9af0e",
+    "runtime_admitted": true,
+    "telemetry_incomplete": true
+  },
+  "captured_at_utc": "2026-10-16T08:26:43.125249+00:00",
+  "console_files": [
+    {
+      "bytes": 2061,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/agent-probe-supported-host-console-first-failure.txt",
+      "sha256": "f7a0a391daba45022acf97249231dd594292b929c0815dadf6a047021e24f228"
+    },
+    {
+      "bytes": 3144,
+      "mode": "0644",
+      "path": ".cindermote/audit/2026-10-16/agent-probe-supported-host-console-rerun.txt",
+      "sha256": "f25c2eaccb2af53f92f6c94e5463ee725a80e39a6070f413a8dbe7ec56d29377"
+    },
+    {
+      "bytes": 1000,
+      "mode": "0600",
+      "path": ".cindermote/audit/2026-10-16/agent-probe-supported-host-console-third-run.txt",
+      "sha256": "3fbb42fb9c28a64c5efdef802101bcf73c023f5015d599ca2dff9a1db0726ac7"
+    },
+    {
+      "bytes": 388,
+      "mode": "0600",
+      "path": ".cindermote/audit/2026-10-16/browser-public-smoke-console.txt",
+      "sha256": "e9bd30700dcc5bc1e943944a4a688cfb604348f94003e18e82345c13fe2bd19d"
+    }
+  ],
+  "schema_version": "cindermote.supported-host-verification/v1",
+  "source_files": [
+    {
+      "bytes": 58341,
+      "mode": "0644",
+      "path": "broker/browser_egress_worker.py",
+      "sha256": "5b9c24554056d1a225579e06242697471fd9d1fb484be1291faf4a890f0c020f"
+    },
+    {
+      "bytes": 28892,
+      "mode": "0644",
+      "path": "agent_probe/firecracker_runtime.py",
+      "sha256": "c32b6c3a867f3c8efee6974563f78c99efdef5a08cc358c3e5d19af1e4a6b482"
+    },
+    {
+      "bytes": 10069,
+      "mode": "0644",
+      "path": "agent_probe/ksl.py",
+      "sha256": "f0817d7926f9e4535159e01127df969f7f22c0e8614d1dbd4ee2e6bb1c4384ac"
+    },
+    {
+      "bytes": 76801,
+      "mode": "0644",
+      "path": "mote/firecracker_runtime.py",
+      "sha256": "bacb2f128df4bd8bfcaf8a011cdd79a39fc48b7f7caff5f211ea69d65fcea291"
+    },
+    {
+      "bytes": 31621,
+      "mode": "0644",
+      "path": "tests/firecracker/e2e_supported_host.py",
+      "sha256": "a59a2d48346a78cdc7896053146f188c0c7f149fcee8f042d3d0ad4306ca4ad7"
+    }
+  ]
+}

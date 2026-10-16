@@ -94,6 +94,7 @@ def test_job_image_copies_opaque_target_without_parsing(tmp_path: Path) -> None:
         {"profile": "agent-probe/v0"},
         extra_files={"target/target-0123456789abcdef.skill": hostile},
     )
+    assert image.stat().st_mode & 0o777 == 0o444
     dump = tmp_path / "target.dump"
     subprocess.run(
         ["debugfs", "-R", f"dump /target/target-0123456789abcdef.skill {dump}", str(image)],

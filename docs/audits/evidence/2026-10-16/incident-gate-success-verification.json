@@ -1,0 +1,55 @@
+{
+  "child_receipts": [
+    {
+      "index": 0,
+      "job_id": "mf-run-b314f8a5",
+      "path": "receipts/mf-run-b314f8a5.json",
+      "sha256": "3c2b1e81dc98ac22e83811a77a135aa5ddd29d451af005716cd341d060a7e8d5",
+      "valid": true
+    },
+    {
+      "index": 1,
+      "job_id": "mf-run-436d5101",
+      "path": "receipts/mf-run-436d5101.json",
+      "sha256": "f2b7d872d085537601c7a8fd85c49d49d760cc25d96cb017716ca6e80ce1b692",
+      "valid": true
+    },
+    {
+      "index": 2,
+      "job_id": "mf-run-b24dcc1c",
+      "path": "receipts/mf-run-b24dcc1c.json",
+      "sha256": "b00d60fd3e95992f781c039fe4907c51df7d4ef4e6a5ab06ecf0befcd5d70044",
+      "valid": true
+    },
+    {
+      "index": 3,
+      "job_id": "mf-run-16601c06",
+      "path": "receipts/mf-run-16601c06.json",
+      "sha256": "ae06e926cacdf291084d6cc5911d187ce380a7620d0e627ed158945c3b592e55",
+      "valid": true
+    },
+    {
+      "index": 4,
+      "job_id": "mf-run-7a579723",
+      "path": "receipts/mf-run-7a579723.json",
+      "sha256": "6de0065880cb4767ab7070ff626ba297037aa44bd62d461caaf2367258e984b3",
+      "valid": true
+    },
+    {
+      "index": 5,
+      "job_id": "mf-run-ff8c042c",
+      "path": "receipts/mf-run-ff8c042c.json",
+      "sha256": "f9478936d2fb6153d4a3361213144eb0a2214d35069abfa127db0cd71ed79a84",
+      "valid": true
+    }
+  ],
+  "errors": [],
+  "manifest_sha256": "895003da7cf4a60bfe23f94225fecf577d7b5115f7a849c155c0295d94f51111",
+  "overall_status": "ALL_BOUNDARIES_HELD",
+  "report_sha256": "a17abcae0242cec5a562b67b0b24ed1308d9680848278479ddfb4b3093cb84c8",
+  "run_id": "run-20261016T070335Z-7351c694",
+  "verification_version": 1,
+  "verified": true,
+  "verified_receipt_count": 6,
+  "warnings": []
+}

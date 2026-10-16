@@ -410,7 +410,8 @@ def _canonical_client_address(value: str) -> str:
 
 def _origin_policy(origin: str, addresses: tuple[str, ...]) -> _OriginPolicy:
     parsed = urlsplit(origin)
-    assert parsed.hostname is not None
+    if parsed.hostname is None:
+        raise BrowserEgressConfigurationError("authorized origin has no hostname")
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return _OriginPolicy(
         origin=origin,
@@ -913,10 +914,13 @@ class BrowserEgressProxy:
                 if self._closed:
                     raise BrowserEgressClosed("browser egress proxy is closed")
                 raise BrowserEgressStartupError("proxy listener was initialized twice")
+            deadline = self._deadline
+            if deadline is None:
+                server.server_close()
+                raise BrowserEgressStartupError("proxy runtime deadline is missing")
             self._server = server
-            assert self._deadline is not None
             timer = threading.Timer(
-                max(0.0, self._deadline - self._clock()),
+                max(0.0, deadline - self._clock()),
                 self.shutdown,
             )
             timer.name = "cindermote-egress-deadline"
@@ -930,7 +934,8 @@ class BrowserEgressProxy:
         with self._state_lock:
             if self._closed:
                 raise BrowserEgressClosed("browser egress proxy is closed")
-            assert self._server is not None
+            if self._server is None:
+                raise BrowserEgressStartupError("proxy listener is missing after bind")
             self._serving = True
             server = self._server
         try:

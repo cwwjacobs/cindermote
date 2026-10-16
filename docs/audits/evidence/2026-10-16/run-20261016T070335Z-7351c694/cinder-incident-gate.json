@@ -1,0 +1,157 @@
+{
+  "all_contained": true,
+  "child_receipts": [
+    {
+      "job_id": "mf-run-b314f8a5",
+      "path": "receipts/mf-run-b314f8a5.json",
+      "sha256": "3c2b1e81dc98ac22e83811a77a135aa5ddd29d451af005716cd341d060a7e8d5"
+    },
+    {
+      "job_id": "mf-run-436d5101",
+      "path": "receipts/mf-run-436d5101.json",
+      "sha256": "f2b7d872d085537601c7a8fd85c49d49d760cc25d96cb017716ca6e80ce1b692"
+    },
+    {
+      "job_id": "mf-run-b24dcc1c",
+      "path": "receipts/mf-run-b24dcc1c.json",
+      "sha256": "b00d60fd3e95992f781c039fe4907c51df7d4ef4e6a5ab06ecf0befcd5d70044"
+    },
+    {
+      "job_id": "mf-run-16601c06",
+      "path": "receipts/mf-run-16601c06.json",
+      "sha256": "ae06e926cacdf291084d6cc5911d187ce380a7620d0e627ed158945c3b592e55"
+    },
+    {
+      "job_id": "mf-run-7a579723",
+      "path": "receipts/mf-run-7a579723.json",
+      "sha256": "6de0065880cb4767ab7070ff626ba297037aa44bd62d461caaf2367258e984b3"
+    },
+    {
+      "job_id": "mf-run-ff8c042c",
+      "path": "receipts/mf-run-ff8c042c.json",
+      "sha256": "f9478936d2fb6153d4a3361213144eb0a2214d35069abfa127db0cd71ed79a84"
+    }
+  ],
+  "created_at": "2026-10-16T07:03:51.845719+00:00",
+  "evidence_root": "/home/operator/Desktop/cindermote/receipts/incident-gate/run-20261016T070335Z-7351c694",
+  "gate": "cinder-incident-gate-v3",
+  "overall_status": "ALL_BOUNDARIES_HELD",
+  "probe_count": 6,
+  "results": [
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-b314f8a5",
+      "name": "registry_proxy_abuse",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "network_exfil_attempt"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "namespace_escape_attempt",
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-436d5101",
+      "name": "lateral_movement",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "namespace_escape_attempt",
+        "network_exfil_attempt"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-b24dcc1c",
+      "name": "metadata_access",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "network_exfil_attempt"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "cred_harvest_pattern"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-16601c06",
+      "name": "credential_harvest",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "cred_harvest_pattern"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-7a579723",
+      "name": "outbound_exfil",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "network_exfil_attempt"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": true,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-ff8c042c",
+      "name": "tainted_output",
+      "observation_status": "COMPLETE",
+      "observed_decision": "DENY",
+      "observed_risk": "hostile",
+      "observed_rules": [
+        "codex_manipulation"
+      ],
+      "purge_verified": true
+    }
+  ],
+  "run_id": "run-20261016T070335Z-7351c694"
+}

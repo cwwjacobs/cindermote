@@ -1,0 +1,155 @@
+{
+  "all_contained": false,
+  "child_receipts": [
+    {
+      "job_id": "mf-run-a40b671d",
+      "path": "receipts/mf-run-a40b671d.json",
+      "sha256": "eaae2ac8976ec3c18a0c83cf4733328f16d096f489338129a861c084a3e26a3a"
+    },
+    {
+      "job_id": "mf-run-9ba8c810",
+      "path": "receipts/mf-run-9ba8c810.json",
+      "sha256": "e5e55767283a41d3c064faac711563167b099116e2dae5f038b5c8e42a9e952f"
+    },
+    {
+      "job_id": "mf-run-e3d04fcd",
+      "path": "receipts/mf-run-e3d04fcd.json",
+      "sha256": "c88a0ffa095bb7fa523423fee7ad2ade333cfd7ce1fe51907be8c8106d5fe0a7"
+    },
+    {
+      "job_id": "mf-run-61436ce7",
+      "path": "receipts/mf-run-61436ce7.json",
+      "sha256": "3295fe9239c5707fb38edb36d9dd3e1ae04487c031174d7fa12cc48696382ea7"
+    },
+    {
+      "job_id": "mf-run-eaa80710",
+      "path": "receipts/mf-run-eaa80710.json",
+      "sha256": "800d11b2ab586b1a1cbaeab90ea28ffffe75a29d5d2de382927085849d565da4"
+    },
+    {
+      "job_id": "mf-run-95e05d38",
+      "path": "receipts/mf-run-95e05d38.json",
+      "sha256": "a759f24874956cae1b4538fef89c736ba2a2752686c8e9ffccf48f618e323880"
+    }
+  ],
+  "created_at": "2026-10-16T06:56:47.627501+00:00",
+  "evidence_root": "/home/operator/Desktop/cindermote/receipts/incident-gate/run-20261016T065642Z-344a69dd",
+  "gate": "cinder-incident-gate-v3",
+  "probe_count": 6,
+  "results": [
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-a40b671d",
+      "name": "registry_proxy_abuse",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "namespace_escape_attempt",
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-9ba8c810",
+      "name": "lateral_movement",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-e3d04fcd",
+      "name": "metadata_access",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "cred_harvest_pattern"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-61436ce7",
+      "name": "credential_harvest",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [
+        "network_exfil_attempt"
+      ],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-eaa80710",
+      "name": "outbound_exfil",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    },
+    {
+      "containment_held": false,
+      "error": null,
+      "expected_decision": "DENY",
+      "expected_risk": "hostile",
+      "expected_rules": [],
+      "isolation_confirmed": true,
+      "job_id": "mf-run-95e05d38",
+      "name": "tainted_output",
+      "observation_status": "EVALUATION_INCOMPLETE",
+      "observed_decision": "EVALUATION_INCOMPLETE",
+      "observed_risk": "suspicious",
+      "observed_rules": [
+        "payload_observation_incomplete"
+      ],
+      "purge_verified": true
+    }
+  ],
+  "run_id": "run-20261016T065642Z-344a69dd"
+}

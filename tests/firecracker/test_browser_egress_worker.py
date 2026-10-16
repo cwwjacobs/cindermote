@@ -723,14 +723,14 @@ class WorkerProcessTests(unittest.TestCase):
             worker_gid=TEST_WORKER_GID,
         )
         fake_process = mock.Mock()
-        with mock.patch.object(
-            worker_module.subprocess,
-            "Popen",
-            return_value=fake_process,
-        ) as popen:
+        with (
+            mock.patch.object(worker_module, "_worker_python", return_value="/usr/bin/python3"),
+            mock.patch.object(worker_module.subprocess, "Popen", return_value=fake_process) as popen,
+        ):
             self.assertIs(worker._spawn(10, 11), fake_process)
         _args, kwargs = popen.call_args
         command = _args[0]
+        self.assertEqual(command[0], "/usr/bin/python3")
         self.assertIn("-I", command)
         self.assertIn("-S", command)
         self.assertIn("-B", command)

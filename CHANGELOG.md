@@ -43,6 +43,9 @@ imported them.
 - `scripts/open-agent-probe-evidence.py`: the offline viewer for sealed guest
   evidence. It escapes hostile text so terminal control sequences are not
   interpreted.
+- `scripts/verify-incident-gate-evidence.py`: verifies the run manifest,
+  child hashes, receipt schemas, job identities, and every child HMAC without
+  printing the observer key.
 - `cindermote --version`; one version constant for the CLI and `mote/detonate.py`
   (they previously said v2.0 and v1.1 for a 1.0.0 release).
 - `cindermote incident-gate doctor` reports `READY`, `DEGRADED` or
@@ -54,6 +57,8 @@ imported them.
   configuration (ruff, mypy, coverage).
 - CI: Python 3.11, 3.12 and 3.13 matrix, a lint-and-types job, a coverage gate, and a
   manual `supported-host.yml` workflow for a self-hosted KVM runner (not yet run).
+- CodeQL on pushes, pull requests and a weekly schedule; weekly Dependabot checks
+  for Python and GitHub Actions.
 - Tests: `test_agent_probe_guest.py` (the real in-guest agent against the real host
   control loop and broker, with a scripted provider), `test_crypto_vectors.py`
   (RFC 9180 A.2.1 known-answer vector, PyCA interoperability, secretstream misuse),
@@ -88,6 +93,9 @@ imported them.
   does not exist.
 - `cindermote detonate` prints a deprecation notice for the legacy artifact types.
 - Generated `policy/golden-snapshot.*` and tool caches are gitignored.
+- CI's direct Python dependencies are pinned, installs accept wheels only, and
+  every third-party GitHub Action reference is pinned to an immutable commit.
+  Checkout credentials are not persisted while repository code executes.
 
 ### Fixed
 
@@ -97,6 +105,18 @@ imported them.
 - `incident-gate doctor` said "READY" with no KVM, no cgroups and a not-ready
   Firecracker runtime, and claimed receipts could be unsigned (the observer key is
   created on first use).
+- Host snapshot construction now preserves safe merged-`/usr` library aliases.
+  On Void Linux, flattening `/usr/lib64` previously left the chrooted interpreter
+  unable to load `libpthread.so.0`, so every probe failed closed before execution.
+- The Incident Gate report distinguishes an incomplete observation, an observed
+  isolation/purge failure, and a completed containment-test mismatch. It no longer
+  labels infrastructure failure as an observed containment breach.
+- Snapshot extraction checks symbolic- and hard-link targets before the Python
+  3.11 compatibility fallback invokes `tarfile.extractall` without a filter.
+- Security-relevant proxy startup invariants now raise explicit errors instead of
+  disappearing when Python runs with optimization enabled.
+- Coverage omits the workspace virtual environment; the previous configuration
+  could count installed packages under `.venv` as project source.
 - Lint: unused imports and ambiguous names (`ruff check .` is clean).
 
 ### Not changed
