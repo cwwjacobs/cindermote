@@ -6,6 +6,7 @@ name: Supported host (KVM)
 #
 # Runner requirements (see RUNBOOK.md for the details of each):
 #   - labels: self-hosted, linux, x64, kvm
+#   - GitHub Actions runner 2.327.1+ for the pinned Node 24 actions
 #   - /dev/kvm and /dev/net/tun readable and writable by the runner user
 #   - passwordless sudo, cgroup v2 mounted at /sys/fs/cgroup, host swap disabled
 #   - Docker (build time only), curl, and the system /usr/bin/python3 (3.11+) with
@@ -41,7 +42,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -87,7 +88,7 @@ jobs:
 
       - name: Upload signed receipts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: supported-host-receipts
           path: |
