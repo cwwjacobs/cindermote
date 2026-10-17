@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -50,11 +51,34 @@ class AgentProbeRun:
         }
 
 
-def _read_exact_key(path: Path, *, name: str, lengths: set[int]) -> bytes:
+MAX_KEY_FILE_BYTES = 1024
+
+
+def _read_exact_key(path: Path, *, name: str, lengths: set[int], private: bool) -> bytes:
+    # A secret key must be readable only by its owner. A public key may be
+    # world-readable but not writable by others: a swapped quarantine key would
+    # seal the guest evidence to someone else.
+    if private:
+        unsafe_mode = 0o077
+        mode_rule = "readable only by its owner (chmod 600)"
+    else:
+        unsafe_mode = 0o022
+        mode_rule = "not writable by group or others"
     try:
-        raw = path.read_bytes()
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     except OSError as exc:
         raise AgentProbeError(f"{name} is unavailable") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & unsafe_mode:
+            raise AgentProbeError(f"{name} must be a regular file {mode_rule}")
+        raw = os.read(descriptor, MAX_KEY_FILE_BYTES + 1)
+    except OSError as exc:
+        raise AgentProbeError(f"{name} is unavailable") from exc
+    finally:
+        os.close(descriptor)
+    if len(raw) > MAX_KEY_FILE_BYTES:
+        raise AgentProbeError(f"{name} has an invalid length")
     if len(raw) in lengths:
         # Exact-length raw key material: accept as-is.  Stripping first
         # would corrupt random binary keys whose trailing byte is ASCII
@@ -124,10 +148,13 @@ def run_agent_probe(
         raise AgentProbeError("fresh API credential is required as a mutable bytearray")
 
     signing_key = observer_key or _read_exact_key(
-        Path(observer_key_path), name="observer signing key", lengths={32, 48, 64}
+        Path(observer_key_path), name="observer signing key", lengths={32, 48, 64}, private=True
     )
     quarantine_key = quarantine_public_key or _read_exact_key(
-        Path(quarantine_public_key_path), name="quarantine X25519 public key", lengths={32}
+        Path(quarantine_public_key_path),
+        name="quarantine X25519 public key",
+        lengths={32},
+        private=False,
     )
     key_id = quarantine_key_id or sha256_hex({"x25519_public_key_hex": quarantine_key.hex()})[:32]
 

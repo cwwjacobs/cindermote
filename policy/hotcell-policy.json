@@ -1,9 +1,9 @@
 {
-  "policy_version": "cindermote-hotcell-v1.3",
+  "policy_version": "cindermote-hotcell-v1.4",
   "isolation": {
     "legacy_code_backend": "linux-namespace",
     "firecracker": {
-      "required_for": ["browser-probe"],
+      "required_for": ["browser-probe", "agent-probe"],
       "fallback": "deny",
       "jailer_required": true,
       "ram_runtime_required": true,

@@ -575,3 +575,48 @@ kernel is behind upstream 6.1.190, and comprehensive CVE clearance was not
 established. This is not hostile-production security clearance. Delayed
 behavior, all native transports, general efficacy, and live-provider agent
 `ALLOW` remain outside the demonstrated result. No new release is claimed.
+
+## 2026-10-17 — v1.4 policy declaration and historical verification
+
+The active policy is now `cindermote-hotcell-v1.4`. Its only semantic changes
+from v1.3 are the version label and adding `agent-probe` to Firecracker's
+`required_for` declaration. No runtime consumes that field: agent-probe already
+uses the Firecracker-only runtime. This is declaration alignment, not new
+containment enforcement or new host proof.
+
+The exact prior policy is preserved in
+`docs/audits/evidence/2026-10-16/hotcell-policy-v1.3.json`, beside the two
+published Incident Gate runs. Its bytes equal the pre-migration active policy
+(file SHA-256 `f4b635ec81370ab9892b5f7c1a765b80007265ecea4d7f14d6600e37ad370396`).
+Both published verification commands now select that archive with `--policy`.
+The original 37 checksum entries and artifacts remain unchanged; the archive
+adds one entry, and all 38 entries pass `sha256sum -c SHA256SUMS`.
+
+Verification in the working tree:
+
+```bash
+.venv/bin/python -B -m pytest -p no:cacheprovider -q \
+  tests/test_policy_versioning.py tests/test_receipt_verification.py \
+  tests/test_agent_probe_runner.py tests/test_incident_gate.py \
+  --deselect=tests/test_incident_gate.py::TestCinderProbeIntegration \
+  --deselect=tests/test_incident_gate.py::TestObservationFailureDetonation
+```
+
+Result: **132 passed, 18 deselected, 18 subtests passed**. The 18 new policy
+tests include all 12 published receipt schemas accepting v1.3 and rejecting
+v1.4, exact archive bytes, the limited active-policy changes, both documented
+paths, and the real verifier on temporary copies re-signed with a public
+test-only key. Wrong-policy and wrong-key checks reject those copies. An
+in-memory mutation making both policies hash as v1.3 caused the rejection
+regression to fail as intended; it changed no file or persistent runtime.
+The 18 policy tests also passed from a source-only temporary copy containing
+tracked and unignored working-tree files, without `.git`, the original runtime
+state, or private keys. That check reused the installed test dependencies; it
+was not a clean dependency installation.
+
+Ruff, the 17-file typed core, kernel-laws, and `git diff --check` also passed.
+This was a targeted run, not a new full-suite coverage measurement. No original
+private keys were accessed, no original HMAC authentication was repeated, and
+no KVM, namespace-detonation, or provider host probes were run. Browser gates
+remain bound to their recorded source and policy bytes; v1.4 has no fresh
+browser host gate. No new release is claimed. See [policy versions](policy/README.md).

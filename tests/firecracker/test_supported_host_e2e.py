@@ -236,6 +236,7 @@ class GateReceiptBindingTests(unittest.TestCase):
         self.key = secrets.token_bytes(32)
         self.key_path = self.root / "observer.key"
         self.key_path.write_bytes(self.key)
+        self.key_path.chmod(0o600)
         self.request = case_request("https://example.org", "/case/clean")
         self.receipt = _valid_receipt()
         events = []

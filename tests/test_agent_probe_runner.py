@@ -219,20 +219,57 @@ def test_read_exact_key_accepts_raw_key_ending_in_whitespace(tmp_path: Path) -> 
     from cindermote.agent_probe.runner import AgentProbeError, _read_exact_key
 
     key_path = tmp_path / "key"
+    key_path.touch(mode=0o600)
     raw_key = b"k" * 31 + b" "
     key_path.write_bytes(raw_key)
-    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}) == raw_key
+    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}, private=True) == raw_key
 
     key_path.write_bytes(b"n" * 32 + b"\n")
-    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}) == b"n" * 32
+    assert _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}, private=True) == b"n" * 32
 
     key_path.write_bytes(b"ab" * 48 + b"\n")
-    assert _read_exact_key(key_path, name="observer signing key", lengths={48}) == bytes.fromhex("ab" * 48)
+    assert _read_exact_key(key_path, name="observer signing key", lengths={48}, private=True) == bytes.fromhex("ab" * 48)
 
     key_path.write_bytes(b"short")
     try:
-        _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64})
+        _read_exact_key(key_path, name="observer signing key", lengths={32, 48, 64}, private=True)
     except AgentProbeError:
         pass
     else:
         raise AssertionError("invalid-length key must be rejected")
+
+
+def test_read_exact_key_refuses_unsafe_key_files(tmp_path: Path) -> None:
+    from cindermote.agent_probe.runner import AgentProbeError, _read_exact_key
+
+    def refused(path: Path, *, private: bool) -> bool:
+        try:
+            _read_exact_key(path, name="key", lengths={32}, private=private)
+        except AgentProbeError:
+            return True
+        return False
+
+    secret = tmp_path / "observer"
+    secret.write_bytes(b"s" * 32)
+    secret.chmod(0o644)
+    assert refused(secret, private=True)
+    secret.chmod(0o600)
+    assert not refused(secret, private=True)
+
+    link = tmp_path / "observer-link"
+    link.symlink_to(secret)
+    assert refused(link, private=True)
+    assert refused(link, private=False)
+    assert refused(tmp_path, private=True)
+
+    public = tmp_path / "quarantine.pub"
+    public.write_bytes(b"p" * 32)
+    public.chmod(0o444)
+    assert not refused(public, private=False)
+    public.chmod(0o664)
+    assert refused(public, private=False)
+
+    oversized = tmp_path / "oversized"
+    oversized.write_bytes(b" " * 2048 + b"s" * 32)
+    oversized.chmod(0o600)
+    assert refused(oversized, private=True)

@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -913,23 +914,51 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def _write_all(descriptor: int, payload: bytes) -> None:
+    view = memoryview(payload)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("short write")
+        view = view[written:]
+
+
 def load_or_create_key(path: str | Path) -> bytes:
+    """Read the 32-byte observer key, creating it if absent.
+
+    An existing key that is a symlink, not a regular file, or readable by
+    anyone but its owner is refused rather than repaired: it may already have
+    been read, and a key that may be known authenticates nothing.
+    """
     key_path = Path(path)
     try:
-        key = key_path.read_bytes()
+        descriptor = os.open(key_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     except FileNotFoundError:
         key_path.parent.mkdir(parents=True, exist_ok=True)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        descriptor = os.open(key_path, flags, 0o600)
+        descriptor = os.open(
+            key_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+        )
         try:
+            os.fchmod(descriptor, 0o600)
             key = os.urandom(32)
-            os.write(descriptor, key)
+            _write_all(descriptor, key)
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+        return key
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
+            raise ValueError(
+                "observer key must be a regular file readable only by its owner (chmod 600)"
+            )
+        key = os.read(descriptor, 33)
+    finally:
+        os.close(descriptor)
     if len(key) != 32:
         raise ValueError("observer key must contain exactly 32 bytes")
-    os.chmod(key_path, 0o600)
     return key
 
 
@@ -1280,12 +1309,25 @@ def write_receipt(
     validate_receipt(receipt, active_policy=active_policy)
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.parent.is_symlink():
+        raise ValueError("receipt directory is unsafe")
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     payload = json.dumps(receipt, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # O_EXCL|O_NOFOLLOW: a planted file or symlink at the temporary name fails
+    # the write instead of letting a root run truncate the file it points to.
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+        0o600,
+    )
     try:
-        os.write(descriptor, payload.encode("utf-8"))
+        _write_all(descriptor, payload.encode("utf-8"))
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
     os.replace(temporary, destination)
+    directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)

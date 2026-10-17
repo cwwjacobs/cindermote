@@ -16,6 +16,9 @@ echo "=== Packaging clean Cindermote release ==="
 # Copy project files into temporary staging area
 rsync -a \
   --exclude='.git' \
+  --exclude='.env' \
+  --exclude='.env.*' \
+  --exclude='*.env' \
   --exclude='.observer_key' \
   --exclude='.tainted_hosts' \
   --exclude='.decommissioned_hosts' \

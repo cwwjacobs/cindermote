@@ -8,6 +8,7 @@ with write access to the receipt directory can edit. They must answer
 from __future__ import annotations
 
 import copy
+import json
 import sys
 from pathlib import Path
 
@@ -235,3 +236,71 @@ def test_legacy_receipt_with_nan_payload_is_invalid_not_an_exception() -> None:
     receipt = _legacy_receipt()
     receipt["gate"]["score"] = float("nan")
     assert verify_signature(receipt, KEY) is False
+
+
+# --- legacy observer key and receipt files -------------------------------------
+
+import observer.receipt as legacy_receipt  # noqa: E402
+
+
+def test_observer_key_is_created_owner_only(tmp_path: Path) -> None:
+    key_path = tmp_path / "keys" / ".observer_key"
+    key = legacy_receipt.load_or_create_key(key_path)
+    assert len(key) == 32
+    assert key_path.stat().st_mode & 0o777 == 0o600
+    assert legacy_receipt.load_or_create_key(key_path) == key
+
+
+@pytest.mark.parametrize("mode", [0o640, 0o604, 0o644])
+def test_observer_key_readable_by_others_is_refused_not_repaired(tmp_path: Path, mode: int) -> None:
+    key_path = tmp_path / ".observer_key"
+    key_path.write_bytes(b"k" * 32)
+    key_path.chmod(mode)
+    with pytest.raises(ValueError, match="chmod 600"):
+        legacy_receipt.load_or_create_key(key_path)
+    assert key_path.stat().st_mode & 0o777 == mode
+
+
+def test_observer_key_symlink_is_refused(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.write_bytes(b"k" * 32)
+    real.chmod(0o600)
+    link = tmp_path / ".observer_key"
+    link.symlink_to(real)
+    with pytest.raises(OSError):
+        legacy_receipt.load_or_create_key(link)
+
+
+def test_observer_key_of_wrong_length_is_refused(tmp_path: Path) -> None:
+    key_path = tmp_path / ".observer_key"
+    key_path.write_bytes(b"k" * 33)
+    key_path.chmod(0o600)
+    with pytest.raises(ValueError, match="exactly 32 bytes"):
+        legacy_receipt.load_or_create_key(key_path)
+
+
+def test_write_receipt_does_not_follow_a_planted_temporary_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(legacy_receipt, "validate_receipt", lambda *_args, **_kwargs: None)
+    victim = tmp_path / "victim"
+    victim.write_text("keep\n", encoding="utf-8")
+    destination = tmp_path / "receipts" / "mf-run-0123abcd.json"
+    destination.parent.mkdir()
+    (destination.parent / "mf-run-0123abcd.json.tmp").symlink_to(victim)
+    with pytest.raises(OSError):
+        legacy_receipt.write_receipt(destination, _legacy_receipt())
+    assert victim.read_text(encoding="utf-8") == "keep\n"
+    assert not destination.exists()
+
+
+def test_write_receipt_writes_owner_only_file_and_removes_temporary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(legacy_receipt, "validate_receipt", lambda *_args, **_kwargs: None)
+    destination = tmp_path / "receipts" / "mf-run-0123abcd.json"
+    receipt = _legacy_receipt()
+    legacy_receipt.write_receipt(destination, receipt)
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert not destination.with_suffix(".json.tmp").exists()
+    assert json.loads(destination.read_text(encoding="utf-8")) == receipt

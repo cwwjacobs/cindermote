@@ -1,9 +1,10 @@
 # 2026-10-16 audit evidence
 
 This is a selected, byte-for-byte copy of the local audit's receipts, traces,
-console results, and verifier outputs. `SHA256SUMS` indexes all 37 copied
-files. The [audit report](../../2026-10-16-security-audit.md) explains the
-findings and fixes; [VALIDATION.md](../../../../VALIDATION.md) records the
+console results, and verifier outputs. `SHA256SUMS` indexes all 37 original copied
+files plus the archived v1.3 policy (38 files total). The
+[audit report](../../2026-10-16-security-audit.md) explains the findings and fixes;
+[VALIDATION.md](../../../../VALIDATION.md) records the
 commands and environment. Both failures and successes are retained.
 
 | Run | What the retained evidence establishes |
@@ -35,14 +36,23 @@ sha256sum -c SHA256SUMS
 ```
 
 The original host can also rerun the legacy HMAC/schema verifier against either
-published run directory using its local `.observer_key`:
+published run directory using its local `.observer_key`. Both runs bind the full
+canonical v1.3 policy hash, so select the preserved policy explicitly rather than
+the active policy (now v1.4):
 
 ```bash
 python3 ../../../../scripts/verify-incident-gate-evidence.py \
-  --expect-all run-20261016T065642Z-344a69dd
+  --policy hotcell-policy-v1.3.json --expect-all run-20261016T065642Z-344a69dd
 python3 ../../../../scripts/verify-incident-gate-evidence.py \
-  --expect-all run-20261016T070335Z-7351c694
+  --policy hotcell-policy-v1.3.json --expect-all run-20261016T070335Z-7351c694
 ```
+
+`hotcell-policy-v1.3.json` was added during the v1.4 migration as an exact copy
+of the policy used by these runs. The original 37 checksum entries and all
+retained receipts, manifests, reports, and verifier outputs are unchanged.
+v1.4 only aligns the Firecracker declaration with agent-probe's existing routing;
+it does not add central enforcement or new host proof. See
+[policy versions](../../../../policy/README.md).
 
 The observer key is deliberately absent from GitHub. Public hashes and HMAC
 signatures allow inspection of the recorded data, but without that key or an

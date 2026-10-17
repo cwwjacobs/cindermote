@@ -11,7 +11,9 @@ agent material inside disposable Firecracker microVMs. Only bounded
 classifications, hashes, and authenticated receipts are meant to cross back to
 the trusted host.
 
-Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
+Policy version: `cindermote-hotcell-v1.4` (`policy/hotcell-policy.json`).
+See [policy versions](policy/README.md) for declaration limits and historical
+receipt verification.
 
 ## What it does today
 
@@ -204,6 +206,7 @@ python3 tests/test_vertical_spine.py
 ./bin/cindermote incident-gate run
 
 # Recheck the manifest hashes, receipt schemas, and all HMAC signatures
+# For historical runs, pass --policy with the policy bound into those receipts.
 ./scripts/verify-incident-gate-evidence.py \
   --expect-all receipts/incident-gate/<run-id>
 

@@ -42,7 +42,8 @@ and standard coreutils; the exact ext4 tools do not come from the host.
 ```
 
 The builder uses a digest-pinned Debian base, Debian snapshot
-`20260716T110000Z`, Chromium `150.0.7871.124`, and its setuid sandbox helper.
+`20261016T120000Z`, Chromium headless shell `155.0.8059.79-1~deb12u1`, and its
+setuid sandbox helper.
 It builds a separate, pinned filesystem-toolchain container containing
 `e2fsprogs 1.47.0-2+b2`, `fakeroot 1.31-1.2`, and an exact SHA-256-verified
 `e2fsdroid`. Filesystem construction then runs offline, unprivileged,

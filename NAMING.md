@@ -16,7 +16,7 @@ All active surfaces use **Cindermote**:
 | Cgroup root | `/sys/fs/cgroup/cindermote` |
 | VMM user/group | `cindermote-vmm` |
 | Proxy user/group | `cindermote-proxy` |
-| Policy version | `cindermote-hotcell-v1.3` |
+| Policy version | `cindermote-hotcell-v1.4` |
 | Protocol version prefix | `cindermote.*` |
 | Receipts terminology | Cindermote Ash Receipts |
 
