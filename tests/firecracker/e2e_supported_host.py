@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import ssl
@@ -17,6 +18,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -26,6 +28,8 @@ if str(PROJECT_DIR) not in sys.path:
 from cindermote.mote.browser_contract import (  # noqa: E402
     make_probe_request,
     normalize_origin,
+    origin_for_url,
+    validate_probe_request,
 )
 from cindermote.mote.browser_evidence import (  # noqa: E402
     TELEMETRY_INCOMPLETE_FINDINGS,
@@ -54,6 +58,8 @@ from cindermote.observer.receipt import (  # noqa: E402
 
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+FIXTURE_INSTANCE_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+FIXTURE_COUNTER_KEYS = ("post", "websocket", "popup", "unauthorized")
 CASES = (
     ("clean", "/case/clean", None),
     ("post", "/case/post", "web_active_interaction_attempt"),
@@ -84,6 +90,9 @@ POLICY_PATH = "policy/hotcell-policy.json"
 ASSET_LOCK_PATH = "policy/firecracker-assets.lock.json"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40,64}$")
+RUNTIME_ASSET_FIELDS = frozenset({
+    "firecracker_sha256", "jailer_sha256", "kernel_sha256", "browser_sha256",
+})
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -232,6 +241,19 @@ def _git_head(project_dir: Path) -> str:
     return value
 
 
+def _validated_runtime_asset_pins(value: Any) -> dict[str, str]:
+    if (
+        not isinstance(value, dict)
+        or set(value) != RUNTIME_ASSET_FIELDS
+        or any(
+            not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None
+            for digest in value.values()
+        )
+    ):
+        raise AssertionError("runtime asset provenance digests are malformed")
+    return dict(value)
+
+
 def collect_gate_provenance(
     project_dir: Path = PROJECT_DIR,
     *,
@@ -295,8 +317,15 @@ def collect_gate_provenance(
     try:
         declared_schema = build_receipt["schema_version"]
         declared_rootfs_sha256 = build_receipt["rootfs"]["sha256"]
+        runtime_asset_pins = {
+            "firecracker_sha256": asset_lock["firecracker"]["binary_sha256"],
+            "jailer_sha256": asset_lock["firecracker"]["jailer_sha256"],
+            "kernel_sha256": asset_lock["guest_kernel"]["sha256"],
+            "browser_sha256": build_receipt["browser"]["binary_sha256"],
+        }
     except (KeyError, TypeError) as exc:
-        raise AssertionError("browser rootfs build receipt lacks its digest binding") from exc
+        raise AssertionError("asset lock or browser build receipt lacks runtime asset digest binding") from exc
+    runtime_asset_pins = _validated_runtime_asset_pins(runtime_asset_pins)
     if declared_schema != receipt_schema:
         raise AssertionError("browser rootfs build receipt schema differs from the asset lock")
     if (
@@ -318,6 +347,10 @@ def collect_gate_provenance(
         "fixture_sources": fixture_records,
         "policy": policy_record,
         "asset_lock": asset_lock_record,
+        # These expected runtime commitments come from the hash-bound lock
+        # and rootfs build receipt; preflight independently checks installed
+        # assets. Every case must report this same complete asset set.
+        "runtime_asset_sha256": runtime_asset_pins,
         "browser_rootfs": {
             "cache_root": str(cache),
             **rootfs_record,
@@ -339,6 +372,9 @@ def verify_gate_provenance(
 ) -> None:
     """Fail unless checkout and artifact bytes still match a recorded identity."""
 
+    if not isinstance(expected, dict):
+        raise AssertionError("gate provenance must be an object")
+    _validated_runtime_asset_pins(expected.get("runtime_asset_sha256"))
     observed = collect_gate_provenance(project_dir, **options)
     if observed != expected:
         raise AssertionError("gate provenance changed during or after collection")
@@ -360,19 +396,30 @@ def _read_private_token(path: Path) -> str:
     return token
 
 
-def _fixture_json(origin: str, path: str, token: str, *, method: str = "GET") -> dict:
+class _NoFixtureRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "fixture redirects are forbidden", headers, fp)
+
+
+def _fixture_json(
+    origin: str, path: str, token: str | None, *, method: str = "GET", ca_file: Path | None = None,
+) -> dict:
+    headers = {"User-Agent": "cindermote-firecracker-e2e/1"}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         origin + path,
         method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "cindermote-firecracker-e2e/1",
-        },
+        headers=headers,
         data=b"" if method == "POST" else None,
     )
-    context = ssl.create_default_context()
+    context = ssl.create_default_context(cafile=ca_file)
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoFixtureRedirects(), urllib.request.HTTPSHandler(context=context),
+    )
     try:
-        with urllib.request.urlopen(request, timeout=10, context=context) as response:
+        with opener.open(request, timeout=10) as response:
             body = response.read(64 * 1024 + 1)
     except (OSError, urllib.error.URLError) as exc:
         raise RuntimeError("controlled HTTPS fixture is unavailable") from exc
@@ -385,6 +432,109 @@ def _fixture_json(origin: str, path: str, token: str, *, method: str = "GET") ->
     if not isinstance(value, dict):
         raise RuntimeError("controlled HTTPS fixture response is not an object")
     return value
+
+
+def _local_control_origin(origin: str | None, ca_file: Path | None) -> str | None:
+    if origin is None and ca_file is None:
+        return None
+    if origin is None or ca_file is None:
+        raise RuntimeError("local fixture control requires both origin and CA file")
+    parsed = urlsplit(origin)
+    if (
+        parsed.scheme != "https" or parsed.hostname != "127.0.0.1"
+        or parsed.username is not None or parsed.password is not None
+        or parsed.path not in {"", "/"} or parsed.query or parsed.fragment
+    ):
+        raise RuntimeError("local fixture control must use HTTPS on 127.0.0.1")
+    _path_record(ca_file, "fixture-control-ca")
+    return f"https://127.0.0.1:{parsed.port or 443}"
+
+
+def _zero_fixture_counts(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == set(FIXTURE_COUNTER_KEYS)
+        and all(type(count) is int and count == 0 for count in value.values())
+    )
+
+
+def _fixture_counter_metadata(response: dict[str, Any], token: str) -> dict[str, Any]:
+    """Retain bounded counter metadata without reflecting control-plane text."""
+
+    expected_fields = {"schema_version", "instance_id", "counts"}
+    instance = response.get("instance_id")
+    raw_counts = response.get("counts")
+    counts = raw_counts if isinstance(raw_counts, dict) else {}
+    safe_counts: dict[str, Any] = {}
+    for name in FIXTURE_COUNTER_KEYS:
+        value = counts.get(name)
+        if type(value) is bool:
+            safe_counts[name] = value
+        elif (
+            type(value) in {int, float}
+            and abs(value) <= 2**53 - 1
+            and (type(value) is int or math.isfinite(value))
+        ):
+            safe_counts[name] = value
+        else:
+            safe_counts[name] = "invalid-counter-value"
+    metadata: dict[str, Any] = {
+        "schema_version": (
+            "cindermote.e2e-fixture/v1"
+            if response.get("schema_version") == "cindermote.e2e-fixture/v1"
+            else "invalid-fixture-schema"
+        ),
+        "instance_id": (
+            instance if isinstance(instance, str)
+            and FIXTURE_INSTANCE_PATTERN.fullmatch(instance) is not None
+            and instance != token else None
+        ),
+        "counts": safe_counts,
+    }
+    rejection = {
+        "unexpected_field_count": len(set(response) - expected_fields),
+        "missing_field_count": len(expected_fields - set(response)),
+        "unexpected_counter_field_count": len(set(counts) - set(FIXTURE_COUNTER_KEYS)),
+        "missing_counter_field_count": len(set(FIXTURE_COUNTER_KEYS) - set(counts)),
+        "invalid_counter_object": not isinstance(raw_counts, dict),
+    }
+    if any(rejection.values()):
+        metadata["rejection_metadata"] = rejection
+    return metadata
+
+
+def _verify_fixture_identity(
+    primary: str,
+    secondary: str,
+    source_sha256: str,
+    token: str,
+    local_control: str | None,
+    ca_file: Path | None,
+) -> dict[str, Any]:
+    # In private-control mode establish the server lifetime through the
+    # authenticated loopback channel before making any public identity call.
+    if local_control is not None:
+        initial = _fixture_json(local_control, "/control/info", token, ca_file=ca_file)
+        public_origins = (primary, secondary)
+    else:
+        initial = _fixture_json(primary, "/fixture-info", None)
+        public_origins = (secondary,)
+    instance_id = initial.get("instance_id")
+    if not isinstance(instance_id, str) or FIXTURE_INSTANCE_PATTERN.fullmatch(instance_id) is None:
+        raise RuntimeError("controlled HTTPS fixture instance identity is malformed")
+    expected = {
+        "schema_version": "cindermote.e2e-fixture/v1",
+        "primary_origin": primary,
+        "unauthorized_origin": secondary,
+        "fixture_source_sha256": source_sha256,
+        "instance_id": instance_id,
+    }
+    if initial != expected:
+        raise RuntimeError("controlled HTTPS fixture identity check failed")
+    for fixture_origin in public_origins:
+        if _fixture_json(fixture_origin, "/fixture-info", None) != expected:
+            raise RuntimeError("public and control fixture instance identities differ")
+    return expected
 
 
 def _write_private_json(path: Path, value: dict[str, Any]) -> None:
@@ -443,12 +593,68 @@ def _verify_probe_receipt(
     receipt: dict,
     request: dict[str, Any],
     expected_finding: str | None,
+    *,
+    attempt_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    request = validate_probe_request(request)
     validate_receipt(receipt)
     key = Path(OBSERVER_KEY_PATH).read_bytes()
     if len(key) != 32 or not verify_signature(receipt, key):
         raise AssertionError("browser receipt signature did not verify")
     browser = receipt["browser_probe"]
+    job_id = receipt["identity"]["job_id"]
+    if attempt_record is not None:
+        attempt_record.update({
+            "job_id": job_id,
+            "receipt_signature_verified": True,
+            "returned_receipt_canonical_sha256": hashlib.sha256(
+                _canonical_json(receipt)
+            ).hexdigest(),
+        })
+    # Receipt validation checks its internal commitments. The gate must also
+    # bind those commitments to this exact case, including the URL path.
+    request_sha256 = hashlib.sha256(json.dumps(
+        request,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    expected_input = {
+        "contract_version": request["contract_version"],
+        "url_sha256": hashlib.sha256(request["url"].encode("utf-8")).hexdigest(),
+        "normalized_origin": origin_for_url(request["url"]),
+        "authorized_origins": request["authorized_origins"],
+        "request_sha256": request_sha256,
+        "navigation_mode": request["navigation"]["mode"],
+    }
+    if any(browser["input"].get(name) != value for name, value in expected_input.items()):
+        raise AssertionError("browser receipt is not bound to the exact fixture request")
+    if any(
+        receipt["budgets_granted"].get(name) != value
+        for name, value in request["budgets"].items()
+    ):
+        raise AssertionError("browser receipt budgets differ from the fixture request")
+
+    receipt_path = RECEIPTS_DIR / f"{job_id}.json"
+    persisted = _strict_json_file(receipt_path, 8 * 1024 * 1024)
+    if persisted != receipt or not verify_signature(persisted, key):
+        raise AssertionError("persisted browser receipt differs or has an invalid signature")
+    evidence_path = RECEIPTS_DIR / f"{job_id}.browser-evidence.json"
+    persisted_evidence = validate_browser_evidence(
+        _strict_json_file(evidence_path, 32 * 1024 * 1024)
+    )
+    if sha256_file(evidence_path) != browser["evidence"]["sha256"]:
+        raise AssertionError("persisted browser evidence differs from its signed commitment")
+    if reduce_browser_evidence(persisted_evidence, request) != browser["reduction"]:
+        raise AssertionError("persisted evidence does not reproduce the signed reduction")
+    if attempt_record is not None:
+        attempt_record.update({
+            "receipt_sha256": sha256_file(receipt_path),
+            "evidence_sha256": browser["evidence"]["sha256"],
+            "decision": receipt["gate"]["final_decision"],
+            "receipt_artifacts_verified": True,
+        })
     findings = {item["finding_id"] for item in browser["findings"]}
     reduction = browser["reduction"]
     if (
@@ -477,20 +683,7 @@ def _verify_probe_receipt(
         value for name, value in purge.items() if name != "verified_externally"
     ):
         raise AssertionError("browser case did not prove complete teardown")
-    job_id = receipt["identity"]["job_id"]
     _assert_clean_teardown(job_id)
-    receipt_path = RECEIPTS_DIR / f"{job_id}.json"
-    persisted = _strict_json_file(receipt_path, 8 * 1024 * 1024)
-    if persisted != receipt or not verify_signature(persisted, key):
-        raise AssertionError("persisted browser receipt differs or has an invalid signature")
-    evidence_path = RECEIPTS_DIR / f"{job_id}.browser-evidence.json"
-    if sha256_file(evidence_path) != browser["evidence"]["sha256"]:
-        raise AssertionError("persisted browser evidence differs from its signed commitment")
-    persisted_evidence = validate_browser_evidence(
-        _strict_json_file(evidence_path, 32 * 1024 * 1024)
-    )
-    if reduce_browser_evidence(persisted_evidence, request) != browser["reduction"]:
-        raise AssertionError("persisted evidence does not reproduce the signed reduction")
     return {
         "job_id": job_id,
         "decision": expected_decision,
@@ -498,6 +691,7 @@ def _verify_probe_receipt(
         "receipt_sha256": sha256_file(receipt_path),
         "evidence_sha256": browser["evidence"]["sha256"],
         "firecracker_sha256": browser["runtime"]["firecracker_sha256"],
+        "jailer_sha256": browser["runtime"]["jailer_sha256"],
         "kernel_sha256": browser["runtime"]["kernel_sha256"],
         "rootfs_sha256": browser["runtime"]["rootfs_sha256"],
         "rootfs_receipt_sha256": browser["runtime"]["rootfs_receipt_sha256"],
@@ -506,12 +700,36 @@ def _verify_probe_receipt(
     }
 
 
+def _claim_case_job(job_id: str, seen_job_ids: set[str]) -> None:
+    if job_id in seen_job_ids:
+        raise AssertionError("competition gate reused a browser job across fixture cases")
+    seen_job_ids.add(job_id)
+
+
+def _verify_case_asset_bindings(case: dict[str, Any], provenance: dict[str, Any]) -> None:
+    expected = _validated_runtime_asset_pins(provenance.get("runtime_asset_sha256"))
+    try:
+        expected.update({
+            "rootfs_sha256": provenance["browser_rootfs"]["sha256"],
+            "rootfs_receipt_sha256": provenance["browser_rootfs"]["build_receipt"]["sha256"],
+        })
+    except (KeyError, TypeError) as exc:
+        raise AssertionError("gate rootfs asset provenance is malformed") from exc
+    for name, digest in expected.items():
+        if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
+            raise AssertionError("gate rootfs asset provenance digest is malformed")
+        if case.get(name) != digest:
+            raise AssertionError(f"signed browser case differs from gate-pinned asset provenance: {name}")
+
+
 def run_gate(
     *,
     origin: str,
     unauthorized_origin: str,
     token_file: Path,
     output_path: Path,
+    control_origin: str | None = None,
+    control_ca_file: Path | None = None,
 ) -> dict[str, Any]:
     # A failed rerun must never leave an older PASS artifact looking current.
     # Remove the prior name before even validating invocation inputs; all
@@ -530,9 +748,12 @@ def run_gate(
         raise RuntimeError("the competition fixture requires HTTPS origins")
     if primary == secondary:
         raise RuntimeError("the unauthorized fixture origin must be distinct")
+    local_control = _local_control_origin(control_origin, control_ca_file)
     token = _read_private_token(token_file)
     observer_key = load_or_create_key(OBSERVER_KEY_PATH)
     provenance_start: dict[str, Any] | None = None
+    current_attempt: dict[str, Any] | None = None
+    seen_job_ids: set[str] = set()
     summary: dict[str, Any] = {
         "schema_version": "cindermote.firecracker-e2e-gate/v2",
         "status": "RUNNING",
@@ -544,6 +765,11 @@ def run_gate(
             "unauthorized_origin": secondary,
             "control_token_recorded": False,
             "source_hash_verified_by_both_origins": False,
+            "control_channel": {
+                "origin": local_control,
+                "ca_sha256": sha256_file(control_ca_file) if control_ca_file else None,
+                "token_sent_to_public_origins": local_control is None,
+            },
         },
         "command": (
             "sudo /usr/bin/python3 tests/firecracker/e2e_supported_host.py "
@@ -565,48 +791,62 @@ def run_gate(
         summary["preflight"] = preflight.to_dict()
         if not preflight.ready:
             raise RuntimeError("Firecracker supported-host preflight is not ready")
-        expected_info = {
-            "schema_version": "cindermote.e2e-fixture/v1",
-            "primary_origin": primary,
-            "unauthorized_origin": secondary,
-            "fixture_source_sha256": {
+        fixture_identity = _verify_fixture_identity(
+            primary, secondary, {
                 item["path"]: item["sha256"] for item in provenance_start["fixture_sources"]
             }[FIXTURE_SOURCE_PATHS[0]],
-        }
+            token, local_control, control_ca_file,
+        )
         for fixture_origin in (primary, secondary):
-            if _fixture_json(fixture_origin, "/control/info", token) != expected_info:
-                raise RuntimeError("controlled HTTPS fixture identity check failed")
-            if _fixture_json(fixture_origin, "/control/reset", token, method="POST") != {"reset": True}:
+            if _fixture_json(
+                local_control or fixture_origin, "/control/reset", token,
+                method="POST", ca_file=control_ca_file,
+            ) != {"reset": True}:
                 raise RuntimeError("controlled HTTPS fixture reset failed")
         summary["fixture"]["source_hash_verified_by_both_origins"] = True
+        summary["fixture"]["instance_id"] = fixture_identity["instance_id"]
+        summary["fixture"]["counter_scope"] = {
+            "model": "shared-fixture-instance",
+            "instance_id": fixture_identity["instance_id"],
+            "control_endpoints": [local_control] if local_control else [primary, secondary],
+            "origin_labels_are_independent": False,
+        }
 
         for case_name, path, expected_finding in CASES:
+            current_attempt = {"case": case_name}
             request = case_request(primary, path)
             receipt = detonate_browser_probe(request, submitted_by="competition-e2e")
-            case_receipt = _verify_probe_receipt(receipt, request, expected_finding)
-            if (
-                case_receipt["rootfs_sha256"]
-                != provenance_start["browser_rootfs"]["sha256"]
-                or case_receipt["rootfs_receipt_sha256"]
-                != provenance_start["browser_rootfs"]["build_receipt"]["sha256"]
-            ):
-                raise AssertionError(
-                    "signed browser case differs from the gate-pinned rootfs provenance"
-                )
+            case_receipt = _verify_probe_receipt(
+                receipt, request, expected_finding, attempt_record=current_attempt
+            )
+            _claim_case_job(case_receipt["job_id"], seen_job_ids)
+            _verify_case_asset_bindings(case_receipt, provenance_start)
             case_receipt["case"] = case_name
             summary["cases"].append(case_receipt)
+            current_attempt = None
 
         expected_fixture = {
             "schema_version": "cindermote.e2e-fixture/v1",
+            "instance_id": fixture_identity["instance_id"],
             "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
         }
-        fixture_counts: dict[str, dict[str, int]] = {}
-        for label, fixture_origin in (("primary", primary), ("secondary", secondary)):
-            fixture = _fixture_json(fixture_origin, "/control/counts", token)
-            if fixture != expected_fixture:
-                raise AssertionError("a forbidden browser action reached the controlled fixture")
-            fixture_counts[label] = fixture["counts"]
+        fixture_counts: dict[str, dict[str, Any]] = {}
         summary["fixture_counts"] = fixture_counts
+        summary["fixture_counter_responses"] = {}
+        for label, fixture_origin in (("primary", primary), ("secondary", secondary)):
+            fixture = _fixture_json(
+                local_control or fixture_origin, "/control/counts", token, ca_file=control_ca_file,
+            )
+            # Preserve only fixed metadata before asserting against the raw
+            # response: malformed controls must not echo a token or page text
+            # into signed FAIL records. Labels share the scope above.
+            counter_metadata = _fixture_counter_metadata(fixture, token)
+            summary["fixture_counter_responses"][label] = counter_metadata
+            fixture_counts[label] = dict(counter_metadata["counts"])
+            if fixture.get("instance_id") != fixture_identity["instance_id"]:
+                raise AssertionError("controlled fixture instance changed before counter verification")
+            if fixture != expected_fixture or not _zero_fixture_counts(fixture.get("counts")):
+                raise AssertionError("a forbidden browser action reached the controlled fixture")
         postflight = preflight_firecracker(profile="browser")
         summary["postflight"] = postflight.to_dict()
         if not postflight.ready:
@@ -619,6 +859,8 @@ def run_gate(
         summary["status"] = "FAIL"
         summary["failure_type"] = type(exc).__name__
         summary["failure"] = str(exc)[:512]
+        if current_attempt is not None:
+            summary["failed_case"] = current_attempt
         raise
     finally:
         provenance_failure: AssertionError | None = None
@@ -681,15 +923,28 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
     primary = fixture.get("primary_origin")
     if not isinstance(primary, str):
         raise AssertionError("competition gate primary origin is missing")
+    instance_id = fixture.get("instance_id")
+    scope = fixture.get("counter_scope")
+    if (
+        not isinstance(instance_id, str)
+        or FIXTURE_INSTANCE_PATTERN.fullmatch(instance_id) is None
+        or not isinstance(scope, dict)
+        or scope.get("model") != "shared-fixture-instance"
+        or scope.get("instance_id") != instance_id
+        or scope.get("origin_labels_are_independent") is not False
+    ):
+        raise AssertionError("competition gate shared fixture instance is missing")
     cases = summary.get("cases")
     if not isinstance(cases, list) or len(cases) != len(CASES):
         raise AssertionError("competition gate case set is incomplete")
+    seen_job_ids: set[str] = set()
     for recorded, (case_name, path, expected_finding) in zip(cases, CASES):
         if not isinstance(recorded, dict) or recorded.get("case") != case_name:
             raise AssertionError("competition gate case order or identity changed")
         job_id = recorded.get("job_id")
         if not isinstance(job_id, str):
             raise AssertionError("competition gate case job identity is missing")
+        _claim_case_job(job_id, seen_job_ids)
         persisted = _strict_json_file(RECEIPTS_DIR / f"{job_id}.json", 8 * 1024 * 1024)
         observed = _verify_probe_receipt(
             persisted,
@@ -699,18 +954,25 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
         observed["case"] = case_name
         if observed != recorded:
             raise AssertionError("competition gate case differs from persisted evidence")
-        if (
-            recorded["rootfs_sha256"] != provenance["browser_rootfs"]["sha256"]
-            or recorded["rootfs_receipt_sha256"]
-            != provenance["browser_rootfs"]["build_receipt"]["sha256"]
-        ):
-            raise AssertionError("competition gate case rootfs provenance changed")
+        _verify_case_asset_bindings(observed, provenance)
     expected_counts = {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0}
-    if summary.get("fixture_counts") != {
+    fixture_counts = summary.get("fixture_counts")
+    if fixture_counts != {
         "primary": expected_counts,
         "secondary": expected_counts,
-    }:
+    } or any(not _zero_fixture_counts(counts) for counts in fixture_counts.values()):
         raise AssertionError("competition gate fixture counts are not clean")
+    expected_response = {
+        "schema_version": "cindermote.e2e-fixture/v1",
+        "instance_id": instance_id,
+        "counts": expected_counts,
+    }
+    counter_responses = summary.get("fixture_counter_responses")
+    if counter_responses != {
+        "primary": expected_response,
+        "secondary": expected_response,
+    } or any(not _zero_fixture_counts(response.get("counts")) for response in counter_responses.values()):
+        raise AssertionError("competition gate fixture counter responses are not clean or instance-bound")
     current_preflight = preflight_firecracker(profile="browser")
     if not current_preflight.ready:
         raise AssertionError("competition host no longer passes Firecracker preflight")
@@ -724,6 +986,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--origin")
     parser.add_argument("--unauthorized-origin")
     parser.add_argument("--control-token-file", type=Path)
+    parser.add_argument("--control-origin", help="optional loopback HTTPS endpoint for private fixture controls")
+    parser.add_argument("--control-ca-file", type=Path, help="CA certificate for the loopback control endpoint")
     parser.add_argument("--verify-output", action="store_true")
     parser.add_argument(
         "--output",
@@ -748,6 +1012,8 @@ def main() -> int:
         unauthorized_origin=args.unauthorized_origin,
         token_file=args.control_token_file,
         output_path=args.output,
+        control_origin=args.control_origin,
+        control_ca_file=args.control_ca_file,
     )
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=True))
     return 0

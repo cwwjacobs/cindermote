@@ -2,25 +2,25 @@
   "schema_version": "cindermote.firecracker-assets/v1",
   "architecture": "x86_64",
   "firecracker": {
-    "version": "1.16.1",
-    "release_url": "https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-x86_64.tgz",
-    "archive_sha256": "382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6",
-    "binary_sha256": "2fd0171309af7e24cf8dafc8a6f921c1434c49b5f9349bb996b7ed0a4deb8aa7",
-    "jailer_sha256": "1f3a0c1fe86212d0001819bfe0819071c01208b3ccc9398c3b3bc1b84cf21edd"
+    "version": "1.17.0",
+    "release_url": "https://github.com/firecracker-microvm/firecracker/releases/download/v1.17.0/firecracker-v1.17.0-x86_64.tgz",
+    "archive_sha256": "06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558",
+    "binary_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+    "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f"
   },
   "guest_kernel": {
-    "version": "6.1.155",
-    "source": "Firecracker CI v1.15 supported-kernel artifact",
-    "url": "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.15/x86_64/vmlinux-6.1.155",
-    "sha256": "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2"
+    "version": "6.1.188",
+    "source": "Firecracker CI 20261016-5732b8331e1e-0; SHA256 pinned from official HTTPS bytes",
+    "url": "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261016-5732b8331e1e-0/x86_64/vmlinux-6.1.188",
+    "sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92"
   },
   "browser_rootfs": {
     "path": "images/browser-rootfs.ext4",
-    "sha256": "a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c",
+    "sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
     "build_receipt_path": "images/browser-rootfs.receipt.json",
-    "build_receipt_sha256": "75e713f326a1384efd29ab4bb5f3cdf0d63261f2cb3420eaed688e37541c234b",
+    "build_receipt_sha256": "bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
     "required_receipt_schema": "cindermote.browser-rootfs/v1",
-    "source_date_epoch": 1784160000,
+    "source_date_epoch": 1792152000,
     "filesystem_uuid": "7a1c357e-64a8-4ef8-9cb1-7a2fd676dd10",
     "directory_hash_seed": "11111111-2222-3333-4444-555555555555"
   }

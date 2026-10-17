@@ -1,0 +1,593 @@
+{
+  "cases": [],
+  "command": "sudo /usr/bin/python3 tests/firecracker/e2e_supported_host.py --origin <controlled-https-origin> --unauthorized-origin <controlled-secondary-origin> --control-token-file <private-file>",
+  "completed_at_unix": 1792212379,
+  "failed_case": {
+    "case": "clean",
+    "decision": "DENY",
+    "evidence_sha256": "46cdd6017bdbfb7f492958491fb5cea58a80a937ed9b0c7a3473d8ab22eac841",
+    "job_id": "mf-web-2eb2d41a",
+    "receipt_artifacts_verified": true,
+    "receipt_sha256": "fcdd5c98f6d167965a0d4fe77d4943f15659f6e729974ca66ce79b21774f5f94",
+    "receipt_signature_verified": true,
+    "returned_receipt_canonical_sha256": "85f02fdc092b8963da8a2d94906f4f3fc36f5f049994e8fb8d8d10288f352f09"
+  },
+  "failure": "browser case has incomplete infrastructure or telemetry evidence",
+  "failure_type": "AssertionError",
+  "fixture": {
+    "control_channel": {
+      "ca_sha256": "e1b1dc2123be666826dc7dc388477ff2c61ba8aba6b2d5b5da37217239107327",
+      "origin": "https://127.0.0.1:8443",
+      "token_sent_to_public_origins": false
+    },
+    "control_token_recorded": false,
+    "counter_scope": {
+      "control_endpoints": [
+        "https://127.0.0.1:8443"
+      ],
+      "instance_id": "6375a9dca174d27572121ff60c2742c7",
+      "model": "shared-fixture-instance",
+      "origin_labels_are_independent": false
+    },
+    "instance_id": "6375a9dca174d27572121ff60c2742c7",
+    "primary_origin": "https://february-either-pavilion-teach.trycloudflare.com",
+    "source_hash_verified_by_both_origins": true,
+    "unauthorized_origin": "https://inbox-analog-registered-choir.trycloudflare.com"
+  },
+  "host_kernel": "6.18.57_1",
+  "local_authentication": {
+    "algorithm": "HMAC-SHA256",
+    "externally_verifiable": false,
+    "key_identifier_sha256": "538353475a640e9909782e33992d1ca52e4ebdc08e9132b49db15ff4455620b0",
+    "verification_scope": "local observer-key holder only"
+  },
+  "preflight": {
+    "checks": [
+      {
+        "detail": "/home/operator/Desktop/cindermote/policy/firecracker-assets.lock.json",
+        "name": "asset_lock",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+        "name": "firecracker_binary",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+        "name": "jailer_binary",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+        "name": "guest_kernel",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "Chromium 155.0.8059.79; sha256:029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455; receipt=9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+        "name": "browser_rootfs",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "euid=0 (jailer/network setup require root)",
+        "name": "root_privilege",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "user=cindermote-vmm; group=cindermote-vmm; uid=989; gid=986; home=/nonexistent; shell=/usr/sbin/nologin; password=locked",
+        "name": "dedicated_vmm_identity",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "user=cindermote-proxy; group=cindermote-proxy; uid=988; gid=985; home=/nonexistent; shell=/usr/sbin/nologin; password=locked",
+        "name": "dedicated_proxy_identity",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_runtime_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/dev/kvm rw",
+        "name": "kvm",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/dev/net/tun rw",
+        "name": "tun",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "fs=tmpfs; mount=/run/cindermote; options=inode64,mode=700,nodev,nosuid,noswap,relatime,rw,size=8388608k",
+        "name": "ram_runtime",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_jailer_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_assets_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_locks_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "fs=tmpfs; mount=/run/cindermote/jailer; options=inode64,mode=700,nosuid,noswap,relatime,rw,size=6291456k",
+        "name": "ram_jailer_runtime",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "disabled",
+        "name": "host_swap_disabled",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/sys/fs/cgroup/cindermote",
+        "name": "delegated_cgroup_v2",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/ip",
+        "name": "command_ip",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/nft",
+        "name": "command_nft",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/mkfs.ext4",
+        "name": "command_mkfs.ext4",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/python3",
+        "name": "command_python3",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/sysctl",
+        "name": "command_sysctl",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "host=6.18.57_1; target=6.18.x; tmpfs_noswap=proven on runtime mounts",
+        "name": "competition_host_kernel",
+        "ok": true,
+        "required": true
+      }
+    ],
+    "profile": "browser",
+    "ready": true
+  },
+  "provenance": {
+    "asset_lock": {
+      "mode": "0644",
+      "path": "policy/firecracker-assets.lock.json",
+      "sha256": "5aade017cd725b88e7bf213af83466f906259d4a7fbc98817a08d36e7320b873",
+      "size_bytes": 1417
+    },
+    "browser_rootfs": {
+      "build_receipt": {
+        "declared_rootfs_sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+        "lock_declared_sha256": "9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+        "mode": "0444",
+        "path": "images/browser-rootfs.receipt.json",
+        "schema_version": "cindermote.browser-rootfs/v1",
+        "sha256": "9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+        "size_bytes": 2843
+      },
+      "cache_root": "/home/operator/Desktop/cindermote/.cindermote/cache",
+      "lock_declared_sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+      "mode": "0444",
+      "path": "images/browser-rootfs.ext4",
+      "sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+      "size_bytes": 1610612736
+    },
+    "fixture_sources": [
+      {
+        "mode": "0644",
+        "path": "tests/firecracker/fixture_https_server.py",
+        "sha256": "b3ea8d81d2592de558ebe77af0ada6e96249a543f4c3f309007dfc993d5c5f02",
+        "size_bytes": 11238
+      }
+    ],
+    "git_head": "2fde07773ad694737e084b5a409f73a4f4a74caa",
+    "policy": {
+      "mode": "0644",
+      "path": "policy/hotcell-policy.json",
+      "sha256": "f4b635ec81370ab9892b5f7c1a765b80007265ecea4d7f14d6600e37ad370396",
+      "size_bytes": 1544
+    },
+    "runtime_asset_sha256": {
+      "browser_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+      "firecracker_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+      "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+      "kernel_sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92"
+    },
+    "schema_version": "cindermote.firecracker-e2e-provenance/v1",
+    "source_snapshot": {
+      "files": [
+        {
+          "mode": "0644",
+          "path": ".dockerignore",
+          "sha256": "686b9867cd930f27283eca27b53678fbd60b238b17192c3d15b298a6941196a6",
+          "size_bytes": 667
+        },
+        {
+          "mode": "0644",
+          "path": "broker/broker.py",
+          "sha256": "c23c41a8a66a8e4a4b2b93947b7d98bf3d2a049f71422f887ffb3b28ccf3d7c3",
+          "size_bytes": 4365
+        },
+        {
+          "mode": "0644",
+          "path": "broker/browser_egress_proxy.py",
+          "sha256": "ba645aa55ce209f5a969349f17dc7bceeacdf83e937fb7097e56a4678befcbcf",
+          "size_bytes": 62143
+        },
+        {
+          "mode": "0644",
+          "path": "broker/browser_egress_worker.py",
+          "sha256": "5b9c24554056d1a225579e06242697471fd9d1fb484be1291faf4a890f0c020f",
+          "size_bytes": 58341
+        },
+        {
+          "mode": "0644",
+          "path": "broker/sinkhole_dns.py",
+          "sha256": "15b3a3966a8b4f27d2f09130fea5046b20e0462d8495c60ed4de3cdfa2ee679d",
+          "size_bytes": 921
+        },
+        {
+          "mode": "0644",
+          "path": "cindermote/__init__.py",
+          "sha256": "7237d82034477c19cfb6eb10cd8fa5c3da44b20b5fef4cede5a4e4a67fd9160f",
+          "size_bytes": 561
+        },
+        {
+          "mode": "0644",
+          "path": "gate/policy_gate.py",
+          "sha256": "29cdb26a5adb035cd771023e50d0667ebf61c73a747817cd82d95785ae154b99",
+          "size_bytes": 5285
+        },
+        {
+          "mode": "0755",
+          "path": "guest/agent_probe_agent.py",
+          "sha256": "f0210336b98c17880cf7588e93c72ecb8f40ab92c6f929aae9188d1f8d8656fa",
+          "size_bytes": 21077
+        },
+        {
+          "mode": "0755",
+          "path": "guest/browser_agent.py",
+          "sha256": "d4e644b0fa0ba17b78ffc52d53dbfcbc29fddf762e2682ba17efd95ded80aa33",
+          "size_bytes": 53212
+        },
+        {
+          "mode": "0755",
+          "path": "guest/cindermote-init",
+          "sha256": "e98eb60c8b99c45d843a0f986d56d661ef6b86b81198249ac6c00a66d4d101c4",
+          "size_bytes": 2167
+        },
+        {
+          "mode": "0644",
+          "path": "images/firecracker/Containerfile",
+          "sha256": "33f1595f9c036d172c64ec4f20d5afe9efce889c5aa77e9e497eeb61c9e5cdbf",
+          "size_bytes": 3475
+        },
+        {
+          "mode": "0644",
+          "path": "images/firecracker/RootfsToolchain.Containerfile",
+          "sha256": "0be71b3fafe8e116f49931a51ccc349843813d7e4600a0696bb1ea2f0599fedd",
+          "size_bytes": 2382
+        },
+        {
+          "mode": "0644",
+          "path": "mote/browser_contract.py",
+          "sha256": "3600a33d977ce9892745b27824b294dddcfe96d144a9568bbbeae1f23ee7e934",
+          "size_bytes": 28017
+        },
+        {
+          "mode": "0644",
+          "path": "mote/browser_evidence.py",
+          "sha256": "dad94ede7a0c5bfefe4dfc38bba3ae3f676ed6ae4d16b8ad48db64a0de0f8651",
+          "size_bytes": 15790
+        },
+        {
+          "mode": "0755",
+          "path": "mote/detonate.py",
+          "sha256": "8d5f7a0ccbc94574070f09e3aa35fab9d0c90f1b014c0c61c9d33c2606acf3d4",
+          "size_bytes": 112677
+        },
+        {
+          "mode": "0644",
+          "path": "mote/firecracker_api.py",
+          "sha256": "189b1e73dc347765f8588df370d791a70d04767aff0cc9cb59c3a26512a58556",
+          "size_bytes": 28823
+        },
+        {
+          "mode": "0644",
+          "path": "mote/firecracker_runtime.py",
+          "sha256": "0f42390bf437cc271749887ef754de3bc010869618dc8783df946f25156bb7ba",
+          "size_bytes": 77708
+        },
+        {
+          "mode": "0755",
+          "path": "mote/namespace_setup.sh",
+          "sha256": "0208e25aafd38ea24cf7ea75b15f14edca867133423154d9017bccf89201c0c3",
+          "size_bytes": 678
+        },
+        {
+          "mode": "0644",
+          "path": "mote/seccomp_filter.bpf",
+          "sha256": "caaf79daa5e893f0c6389fb81ba2d2a2265b17438417f4ed2fa84cdc30edde9c",
+          "size_bytes": 304
+        },
+        {
+          "mode": "0644",
+          "path": "observer/detectors.py",
+          "sha256": "b0ccb6fc04a7418862d80d8ea4728cb566ad21426ed4952b02fa52b061a46973",
+          "size_bytes": 11207
+        },
+        {
+          "mode": "0644",
+          "path": "observer/ptracer.py",
+          "sha256": "87f4a85726733a9564a1352a7a658ef0c968b7ccf28e9e72592f509c6b8d947f",
+          "size_bytes": 20896
+        },
+        {
+          "mode": "0644",
+          "path": "observer/receipt.py",
+          "sha256": "f2c50c4e7b670816a88dd0ff1247f56b8c5b469800296045222d07ed0c92c8d0",
+          "size_bytes": 52000
+        },
+        {
+          "mode": "0444",
+          "path": "policy/agent-probe-quarantine.x25519.pub",
+          "sha256": "bd632fac47fda9387deb5cdfb214f55a91448fd9ccd1719f890e46f994f45c87",
+          "size_bytes": 32
+        },
+        {
+          "mode": "0644",
+          "path": "policy/firecracker-assets.lock.json",
+          "sha256": "5aade017cd725b88e7bf213af83466f906259d4a7fbc98817a08d36e7320b873",
+          "size_bytes": 1417
+        },
+        {
+          "mode": "0644",
+          "path": "policy/golden-snapshot.manifest",
+          "sha256": "b0d5120ba4361492668aaf39f67499632bd647635f523f23c0a46408c5956afd",
+          "size_bytes": 159
+        },
+        {
+          "mode": "0644",
+          "path": "policy/golden-snapshot.tar.gz",
+          "sha256": "bcc366cc562dd54d2433e9f8e77923bb80c53e37f3c2bc1ec96ec99e4e536e2a",
+          "size_bytes": 25127046
+        },
+        {
+          "mode": "0644",
+          "path": "policy/hotcell-policy.json",
+          "sha256": "f4b635ec81370ab9892b5f7c1a765b80007265ecea4d7f14d6600e37ad370396",
+          "size_bytes": 1544
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/bounded-host-event-v1.schema.json",
+          "sha256": "3c14650900365b341f78de05a491cdec4da907f8aac89100aa4357be4b579b7a",
+          "size_bytes": 1295
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/browser-evidence-v2.schema.json",
+          "sha256": "505303d9b542d78a47a0ec04cf3e662369eeb2b09efe5fa6cf701490740012bc",
+          "size_bytes": 4093
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/browser-probe-v1.schema.json",
+          "sha256": "ce5ecef480bce0a92a1ff71ee79c76da3aa244ea4e75715eac229fc4cd24c735",
+          "size_bytes": 8861
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/capability-manifest-v1.schema.json",
+          "sha256": "af52f7b4e633172929e11ce96be9b8f9085978516150f8559856594c501a312c",
+          "size_bytes": 873
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/collapse-cue-registry-v1.schema.json",
+          "sha256": "e13c6d0947fe4db236423524c25fa3316e29f22e75dc45f4aa1ca9b470fc31e6",
+          "size_bytes": 790
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/field-atlas-v1.schema.json",
+          "sha256": "6d605da724269512a81cf5c3d88750b5983ab460de13d3969267526ff3300624",
+          "size_bytes": 796
+        },
+        {
+          "mode": "0644",
+          "path": "schemas/seam-registry-v1.schema.json",
+          "sha256": "ccc1168f4b72b9ce5a3d82dd5b7017eb7a11e7df17e03eb552368935f1b4d9f6",
+          "size_bytes": 841
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/build-firecracker-image.sh",
+          "sha256": "3f843c087fa5c1f914f1de80f860b9686622fed24063bf66c501ef3c5840c7e5",
+          "size_bytes": 12209
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/build-rootfs-in-toolchain.sh",
+          "sha256": "170918895073bbcf3967fe4a63204a1976c7706482cc67d8d8f4eba96595ce02",
+          "size_bytes": 4598
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/fetch-firecracker.sh",
+          "sha256": "3f0485a856aead153ffa92dc1ec046ca79540f3bcb691ed7943fb02b834690d3",
+          "size_bytes": 3065
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/generate-agent-probe-keys.py",
+          "sha256": "cd6bb78563d011ac92cb6b5afe5026587a9c4c9a7b13011def05d720f12b0ad9",
+          "size_bytes": 3340
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/open-agent-probe-evidence.py",
+          "sha256": "6181d71617f3f5b5902bb213e6f8b21c0b55e434fb084b6b27ad7b1c7305fd79",
+          "size_bytes": 4620
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/package-release.sh",
+          "sha256": "f3a017faeac1adb4740d07455c0ff3ce5230428a059ad8d6c50446d343f0125b",
+          "size_bytes": 1996
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/prepare-firecracker-host.sh",
+          "sha256": "7190a14838b88962540cfbad0bd405c2321d3270953920c0fd42f304d7190394",
+          "size_bytes": 7137
+        },
+        {
+          "mode": "0755",
+          "path": "scripts/verify-incident-gate-evidence.py",
+          "sha256": "bea8106e79bf5c628acd13f85cc93df9458746fb45d7601f041a148a56f80ee3",
+          "size_bytes": 11328
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/e2e_supported_host.py",
+          "sha256": "2d81628e988a98347c8346f94fcfb368cc0ec50a188311dd4c2b83367c13e99f",
+          "size_bytes": 40402
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/fixture_https_server.py",
+          "sha256": "b3ea8d81d2592de558ebe77af0ada6e96249a543f4c3f309007dfc993d5c5f02",
+          "size_bytes": 11238
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_browser_agent.py",
+          "sha256": "c04704634b1cd179aa1338a1000a6738038346e38b466e0e074c156efea37c51",
+          "size_bytes": 36300
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_browser_contract.py",
+          "sha256": "a7cc1a57ebcccf16bb4bf3f6fa9459b7f541e98ce08e2ebdaef452ea6cb5da22",
+          "size_bytes": 13013
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_browser_egress_proxy.py",
+          "sha256": "aa1636114683f80ada207b7f4420d5e224d472ff248cd3d2ab81f7145a609601",
+          "size_bytes": 31668
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_browser_egress_worker.py",
+          "sha256": "0b3ddf7901fdaa8b9beac1993c93b02017876c3fb3340d975228f1edc81b4bdf",
+          "size_bytes": 32734
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_browser_receipt.py",
+          "sha256": "9ec6868f206a6c0c88d50ecf278bad31db5d3c836f1385a3ccd7376f19a9009f",
+          "size_bytes": 19127
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_firecracker_api.py",
+          "sha256": "3127f99f8d421ec6b1a2ad24e673faf15092c78aa6bba5579782e79e1996c63c",
+          "size_bytes": 13908
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_firecracker_runtime.py",
+          "sha256": "4baddb1169927218b9b0aabfd12d9ec38b8c743a7266910badb3eb5b8a52e776",
+          "size_bytes": 31551
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_fixture_control.py",
+          "sha256": "f047382e538a7bed92b38f15a732b7486ae7507008b1a09b35564c8c80dcf3ba",
+          "size_bytes": 7760
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_fixture_https_server.py",
+          "sha256": "4cf7fe84cc993fe056fada25b3e3f75a3edca5c8b982158a36f45e40d9512887",
+          "size_bytes": 3723
+        },
+        {
+          "mode": "0644",
+          "path": "tests/firecracker/test_supported_host_e2e.py",
+          "sha256": "8744941d560c3e6746e7070171874e11431c80b8460ae5fbfe7c4718fd03bd95",
+          "size_bytes": 23010
+        }
+      ],
+      "manifest_sha256": "a0143da47fa8c0bcf8db5e57a0939809fda9acd59ee1122a9be45d614682e686",
+      "scope": [
+        ".dockerignore",
+        "broker",
+        "gate",
+        "guest",
+        "images/firecracker",
+        "mote",
+        "cindermote",
+        "observer",
+        "policy",
+        "schemas",
+        "scripts",
+        "tests/firecracker"
+      ]
+    }
+  },
+  "provenance_verification": {
+    "detail": "checkout and artifact bytes match the recorded provenance",
+    "status": "PASS"
+  },
+  "receipt_signature": "6ac05322b079b4a8201cfda75513cae7ac5fec88d9ddcb30f30bbe1fb87893ca",
+  "schema_version": "cindermote.firecracker-e2e-gate/v2",
+  "started_at_unix": 1792212371,
+  "status": "FAIL",
+  "working_directory": "/home/operator/Desktop/cindermote"
+}

@@ -1,0 +1,52 @@
+{
+  "authentication_scope": "Derived source review; not a signed vendor attestation or comprehensive vulnerability scan",
+  "browser": {
+    "current_source": "https://security-tracker.debian.org/tracker/source-package/chromium",
+    "debian_snapshot": "20261016T120000Z",
+    "hostile_production_security_clearance": false,
+    "older_fixed_advisories": [
+      "https://security-tracker.debian.org/tracker/CVE-2026-16807",
+      "https://security-tracker.debian.org/tracker/CVE-2026-17658"
+    ],
+    "package_authority": "APT verifies Debian repository signatures and package hashes",
+    "prior_version": "150.0.7871.124-1~deb12u1",
+    "remaining_open_advisories": [
+      "CVE-2026-110913",
+      "CVE-2026-110914",
+      "CVE-2026-110915",
+      "CVE-2026-110916",
+      "CVE-2026-110917",
+      "CVE-2026-110918",
+      "CVE-2026-110919",
+      "CVE-2026-110920",
+      "CVE-2026-110921",
+      "CVE-2026-110922"
+    ],
+    "scope_note": "Source-version applicability, no exploit demonstrated against this headless build or its isolation layers",
+    "selected_package": "chromium-headless-shell",
+    "selected_version": "155.0.8059.79-1~deb12u1",
+    "upstream_fix_version_for_remaining": "155.0.8059.84"
+  },
+  "firecracker": {
+    "archive_digest_authority": "GitHub release asset SHA256; extracted executable hashes checked locally",
+    "asset_lock_path": "policy/firecracker-assets.lock.json",
+    "release_url": "https://github.com/firecracker-microvm/firecracker/releases/tag/v1.17.0",
+    "selected_version": "1.17.0"
+  },
+  "guest_kernel": {
+    "comprehensive_cve_clearance": false,
+    "digest_authority": "Computed locally from official HTTPS bytes; no publisher-signed checksum manifest located",
+    "selected_version": "6.1.188",
+    "sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+    "source_url": "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261016-5732b8331e1e-0/x86_64/vmlinux-6.1.188",
+    "upstream_6_1_version_seen": "6.1.190",
+    "upstream_source": "https://www.kernel.org/"
+  },
+  "out_of_scope": [
+    "Comprehensive exploitability analysis",
+    "Independent build or host attestation",
+    "Live-provider agent ALLOW"
+  ],
+  "reviewed_at_utc": "2026-10-17T04:41:56.151749+00:00",
+  "schema_version": "cindermote.runtime-freshness-review/v1"
+}

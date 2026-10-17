@@ -1,0 +1,432 @@
+{
+  "browser_probe": {
+    "artifacts": {
+      "raw_retained": false
+    },
+    "evidence": {
+      "events_observed": 2,
+      "schema_version": "cindermote.browser-evidence/v2",
+      "sha256": "46cdd6017bdbfb7f492958491fb5cea58a80a937ed9b0c7a3473d8ab22eac841",
+      "stream_status": {
+        "browser": {
+          "complete": false,
+          "event_count": 0,
+          "observed_event_count": 0
+        },
+        "cdp": {
+          "complete": false,
+          "event_count": 0,
+          "observed_event_count": 0
+        },
+        "egress": {
+          "complete": false,
+          "event_count": 0,
+          "observed_event_count": 0
+        },
+        "vm": {
+          "complete": false,
+          "event_count": 2,
+          "observed_event_count": 2
+        }
+      }
+    },
+    "findings": [
+      {
+        "count": 1,
+        "finding_id": "firecracker_runtime_failure",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "purge_failure",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_browser_lifecycle_incomplete",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_browser_sandbox_unknown",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_browser_telemetry_loss",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_cdp_telemetry_loss",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_egress_telemetry_loss",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_navigation_missing",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_vm_execution_failed",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 1,
+        "finding_id": "web_vm_lifecycle_incomplete",
+        "severity": "CRITICAL"
+      },
+      {
+        "count": 2,
+        "finding_id": "web_vm_telemetry_loss",
+        "severity": "CRITICAL"
+      }
+    ],
+    "input": {
+      "authorized_origins": [
+        "https://february-either-pavilion-teach.trycloudflare.com"
+      ],
+      "contract_version": "cindermote.browser-probe/v1",
+      "navigation_mode": "passive",
+      "normalized_origin": "https://february-either-pavilion-teach.trycloudflare.com",
+      "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+      "request_sha256": "776678738570b06e7dac0c7f427c8079158b00c2fa37b64b5b6f028d90546a08",
+      "url_sha256": "93cd55e13ae2be433dad7ebcd6bc53898913c8cbbb6f4fc71b0f028e5ed9c124"
+    },
+    "reduction": {
+      "complete": false,
+      "decision": "DENY",
+      "events_observed": 2,
+      "evidence_version": "cindermote.browser-evidence/v2",
+      "fail_closed": true,
+      "findings": [
+        {
+          "count": 1,
+          "finding_id": "web_browser_lifecycle_incomplete",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_browser_sandbox_unknown",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_browser_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_cdp_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_egress_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_navigation_missing",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_vm_execution_failed",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_vm_lifecycle_incomplete",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 2,
+          "finding_id": "web_vm_telemetry_loss",
+          "severity": "CRITICAL"
+        }
+      ],
+      "streams": {
+        "browser": {
+          "complete": false,
+          "declared_event_count": 0,
+          "observed_event_count": 0
+        },
+        "cdp": {
+          "complete": false,
+          "declared_event_count": 0,
+          "observed_event_count": 0
+        },
+        "egress": {
+          "complete": false,
+          "declared_event_count": 0,
+          "observed_event_count": 0
+        },
+        "vm": {
+          "complete": false,
+          "declared_event_count": 2,
+          "observed_event_count": 2
+        }
+      },
+      "telemetry_incomplete": true
+    },
+    "runtime": {
+      "admitted": false,
+      "browser_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+      "browser_version": "Chromium 155.0.8059.79",
+      "cgroup_limits": {},
+      "firecracker_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+      "firecracker_version": "1.17.0",
+      "guest_writes_tmpfs_only": false,
+      "host_runtime_tmpfs": true,
+      "host_swap_disabled": true,
+      "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+      "kernel_sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+      "mmds_enabled": false,
+      "network_mode": "explicit-proxy-only",
+      "rootfs_read_only": false,
+      "rootfs_receipt_sha256": "9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+      "rootfs_sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+      "vmm_exit_code": null,
+      "vmm_identity": {
+        "gid": 986,
+        "group": "cindermote-vmm",
+        "uid": 989,
+        "user": "cindermote-vmm"
+      }
+    },
+    "schema_version": "cindermote.browser-probe-receipt/v2"
+  },
+  "budget_exhausted": false,
+  "budgets_granted": {
+    "cpu_vcpu": 1,
+    "fs_writes": "guest tmpfs only",
+    "interaction": "passive navigation only",
+    "max_events": 10000,
+    "max_network_bytes": 16777216,
+    "max_redirects": 8,
+    "max_tabs": 1,
+    "ram_mib": 1024,
+    "wall_clock_sec": 20
+  },
+  "canaries_touched": {},
+  "capabilities": {
+    "binding": {
+      "job_id": "mf-web-2eb2d41a",
+      "request_sha256": "776678738570b06e7dac0c7f427c8079158b00c2fa37b64b5b6f028d90546a08"
+    },
+    "denied": [
+      "browser.click",
+      "browser.type",
+      "browser.upload",
+      "browser.download"
+    ],
+    "granted": [
+      "browser.navigate"
+    ],
+    "requested": [
+      "browser.navigate"
+    ]
+  },
+  "destinations_attempted": {},
+  "detector_findings": [
+    {
+      "count": 1,
+      "rule_id": "firecracker_runtime_failure",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "purge_failure",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_browser_lifecycle_incomplete",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_browser_sandbox_unknown",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_browser_telemetry_loss",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_cdp_telemetry_loss",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_egress_telemetry_loss",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_navigation_missing",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_vm_execution_failed",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 1,
+      "rule_id": "web_vm_lifecycle_incomplete",
+      "severity": "CRITICAL"
+    },
+    {
+      "count": 2,
+      "rule_id": "web_vm_telemetry_loss",
+      "severity": "CRITICAL"
+    }
+  ],
+  "gate": {
+    "final_authority": "fail_closed_infrastructure_gate",
+    "final_decision": "DENY",
+    "human_gate_override": "none",
+    "override_blocked_by_fail_closed": false,
+    "policy_gate_decision": "DENY",
+    "policy_gate_reason": "known_bad_behavior_detected"
+  },
+  "identity": {
+    "artifact_sha256": "776678738570b06e7dac0c7f427c8079158b00c2fa37b64b5b6f028d90546a08",
+    "artifact_type": "browser-probe",
+    "job_id": "mf-web-2eb2d41a",
+    "received_at": "2026-10-17T04:46:16.386601+00:00",
+    "submitted_by": "competition-e2e"
+  },
+  "isolation": {
+    "cgroups_used": false,
+    "guest_writes_tmpfs_only": false,
+    "host_runtime_tmpfs": true,
+    "host_swap_disabled": true,
+    "jailer_used": false,
+    "kvm_used": false,
+    "mlock_used": false,
+    "mode": "firecracker",
+    "namespace_used": false,
+    "rootfs_read_only": false,
+    "seccomp_loaded": false
+  },
+  "outward_report": {
+    "canaries_tripped": [],
+    "capabilities_requested": [
+      "browser.navigate"
+    ],
+    "destinations": [],
+    "evidence": [
+      {
+        "count": 1,
+        "rule_id": "firecracker_runtime_failure",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "purge_failure",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_browser_lifecycle_incomplete",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_browser_sandbox_unknown",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_browser_telemetry_loss",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_cdp_telemetry_loss",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_egress_telemetry_loss",
+        "tap_category": "network_flows"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_navigation_missing",
+        "tap_category": "network_flows"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_vm_execution_failed",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 1,
+        "rule_id": "web_vm_lifecycle_incomplete",
+        "tap_category": "syscall_class"
+      },
+      {
+        "count": 2,
+        "rule_id": "web_vm_telemetry_loss",
+        "tap_category": "syscall_class"
+      }
+    ],
+    "risk_level": "hostile",
+    "uncertainty": 1.0
+  },
+  "purge": {
+    "cgroup_removed": true,
+    "egress_worker_reaped": false,
+    "network_namespace_removed": true,
+    "processes_reaped": true,
+    "ram_jail_removed": true,
+    "verified_externally": false
+  },
+  "receipt_signature": "5e0806def2be7a80af26ec4268d9b18fd971de5fabb4a52cc058d6fda9d7e987",
+  "residual_uncertainty": 1.0,
+  "snapshot_policy": {
+    "memory_snapshots": "disabled-v1",
+    "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+    "policy_version": "cindermote-hotcell-v1.3",
+    "snapshot_sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+    "snapshot_verified_by": "host-observer (external hash + read-only drive)"
+  },
+  "telemetry_incomplete": true,
+  "telemetry_summary": {
+    "events_observed": 2,
+    "metadata_only": true,
+    "streams": {
+      "browser": {
+        "complete": false,
+        "event_count": 0,
+        "observed_event_count": 0
+      },
+      "cdp": {
+        "complete": false,
+        "event_count": 0,
+        "observed_event_count": 0
+      },
+      "egress": {
+        "complete": false,
+        "event_count": 0,
+        "observed_event_count": 0
+      },
+      "vm": {
+        "complete": false,
+        "event_count": 2,
+        "observed_event_count": 2
+      }
+    }
+  }
+}

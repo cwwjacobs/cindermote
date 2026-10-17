@@ -1,0 +1,55 @@
+{
+  "events": [
+    {
+      "connect_authority": null,
+      "disposition": "started",
+      "kind": "lifecycle",
+      "sequence": 0,
+      "source": "vm",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "failed",
+      "kind": "lifecycle",
+      "sequence": 1,
+      "source": "vm",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "observed",
+      "kind": "telemetry_loss",
+      "sequence": 2,
+      "source": "vm",
+      "web_origin": null
+    },
+    {
+      "connect_authority": "february-either-pavilion-teach.trycloudflare.com:443",
+      "disposition": "allowed",
+      "kind": "network_request",
+      "sequence": 0,
+      "source": "egress",
+      "web_origin": null
+    }
+  ],
+  "evidence_version": "cindermote.browser-evidence/v2",
+  "streams": {
+    "browser": {
+      "complete": false,
+      "event_count": 0
+    },
+    "cdp": {
+      "complete": false,
+      "event_count": 0
+    },
+    "egress": {
+      "complete": true,
+      "event_count": 1
+    },
+    "vm": {
+      "complete": false,
+      "event_count": 3
+    }
+  }
+}

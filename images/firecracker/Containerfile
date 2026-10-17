@@ -3,9 +3,9 @@
 FROM docker.io/library/debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG SOURCE_DATE_EPOCH=1784160000
-ARG CHROMIUM_VERSION=150.0.7871.124-1~deb12u1
-ARG DEBIAN_SNAPSHOT=20260716T110000Z
+ARG SOURCE_DATE_EPOCH=1792152000
+ARG CHROMIUM_VERSION=155.0.8059.79-1~deb12u1
+ARG DEBIAN_SNAPSHOT=20261016T120000Z
 # The base-image digest fixes the initial filesystem; the dated Debian
 # snapshots fix every package selected by apt. Release signatures remain the
 # package authority even though the snapshot endpoint is HTTP in the minimal
@@ -17,7 +17,7 @@ RUN sed -i \
     && apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get install --yes --no-install-recommends \
        ca-certificates \
-       chromium=${CHROMIUM_VERSION} \
+       chromium-headless-shell=${CHROMIUM_VERSION} \
        chromium-common=${CHROMIUM_VERSION} \
        chromium-sandbox=${CHROMIUM_VERSION} \
        fonts-liberation \
@@ -37,7 +37,7 @@ RUN sed -i \
     && useradd --uid 1000 --user-group --home-dir /home/probe --shell /usr/sbin/nologin probe \
     && install -d -o probe -g probe -m 0700 /home/probe \
     && install -d -m 0755 /job /run/cindermote /opt/cindermote /dev/shm
-RUN test "$(dpkg-query -W chromium chromium-common chromium-sandbox | cut -f2 | sort -u)" = "${CHROMIUM_VERSION}"
+RUN test "$(dpkg-query -W chromium-headless-shell chromium-common chromium-sandbox | cut -f2 | sort -u)" = "${CHROMIUM_VERSION}"
 
 COPY guest/browser_agent.py /opt/cindermote/browser_agent.py
 COPY guest/agent_probe_agent.py /opt/cindermote/agent_probe_agent.py
@@ -59,7 +59,7 @@ RUN chmod 0444 /opt/cindermote/browser_contract.py \
     && chmod 0555 /opt/cindermote/browser_agent.py /opt/cindermote/agent_probe_agent.py /sbin/cindermote-init \
     && python3 -I -B -c 'import cryptography; import ctypes.util; assert ctypes.util.find_library("sodium")' \
     && test -u /usr/lib/chromium/chrome-sandbox \
-    && chromium --version > /opt/cindermote/chromium.version \
-    && sha256sum /usr/lib/chromium/chromium > /opt/cindermote/chromium.sha256
+    && chromium-headless-shell --version > /opt/cindermote/chromium.version \
+    && sha256sum /usr/lib/chromium/chromium-headless-shell > /opt/cindermote/chromium.sha256
 
 ENTRYPOINT ["/sbin/cindermote-init"]

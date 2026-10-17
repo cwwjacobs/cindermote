@@ -3,7 +3,7 @@
 FROM docker.io/library/debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG DEBIAN_SNAPSHOT=20260716T110000Z
+ARG DEBIAN_SNAPSHOT=20261016T120000Z
 ARG E2FSPROGS_VERSION=1.47.0-2+b2
 ARG FAKEROOT_VERSION=1.31-1.2
 ARG PLATFORM_TOOLS_URL=https://dl.google.com/android/repository/platform-tools_r33.0.3-linux.zip

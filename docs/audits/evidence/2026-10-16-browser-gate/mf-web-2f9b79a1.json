@@ -1,0 +1,256 @@
+{
+  "browser_probe": {
+    "artifacts": {
+      "attestation_complete": true,
+      "console_event_count": 0,
+      "dom_sha256": "3027b2aa4c5ba8bf08787582426c1bc532c65421c5de8ef0a18b462df10dfd62",
+      "raw_retained": false,
+      "screenshot_sha256": "29f4c22c6df226b43dd11dd08f2c0897726dea91c7b4b4d86b8e6787be9bb0fe",
+      "visible_text_sha256": "aa8c4320fabb468930b605f5f365b1beaf2ac42b081eed50083e26d26cb3c159"
+    },
+    "evidence": {
+      "events_observed": 9,
+      "schema_version": "cindermote.browser-evidence/v2",
+      "sha256": "03ccd6c91af8337204b0ed424c4292154227eee649d0210584ce398dafb307e7",
+      "stream_status": {
+        "browser": {
+          "complete": true,
+          "event_count": 3,
+          "observed_event_count": 3
+        },
+        "cdp": {
+          "complete": true,
+          "event_count": 3,
+          "observed_event_count": 3
+        },
+        "egress": {
+          "complete": true,
+          "event_count": 1,
+          "observed_event_count": 1
+        },
+        "vm": {
+          "complete": true,
+          "event_count": 2,
+          "observed_event_count": 2
+        }
+      }
+    },
+    "findings": [],
+    "input": {
+      "authorized_origins": [
+        "https://example.org"
+      ],
+      "contract_version": "cindermote.browser-probe/v1",
+      "navigation_mode": "passive",
+      "normalized_origin": "https://example.org",
+      "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+      "request_sha256": "1e5d7a8ce21e92fcaceabadb0d31884635693014442685d8f2f980adf904b08a",
+      "url_sha256": "8198d1bac40a1033653a78e48800cefc9e6b974ff075c66e5548b5c1e145a2b0"
+    },
+    "reduction": {
+      "complete": true,
+      "decision": "ALLOW",
+      "events_observed": 9,
+      "evidence_version": "cindermote.browser-evidence/v2",
+      "fail_closed": false,
+      "findings": [],
+      "streams": {
+        "browser": {
+          "complete": true,
+          "declared_event_count": 3,
+          "observed_event_count": 3
+        },
+        "cdp": {
+          "complete": true,
+          "declared_event_count": 3,
+          "observed_event_count": 3
+        },
+        "egress": {
+          "complete": true,
+          "declared_event_count": 1,
+          "observed_event_count": 1
+        },
+        "vm": {
+          "complete": true,
+          "declared_event_count": 2,
+          "observed_event_count": 2
+        }
+      },
+      "telemetry_incomplete": false
+    },
+    "runtime": {
+      "admitted": true,
+      "browser_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+      "browser_version": "Chromium 155.0.8059.79",
+      "cgroup_limits": {
+        "cpu.max": "100000 100000",
+        "memory.max": "1610612736",
+        "memory.swap.max": "0",
+        "pids.max": "256"
+      },
+      "egress_worker": {
+        "capabilities_zero": true,
+        "dumpable": false,
+        "gid": 985,
+        "group": "cindermote-proxy",
+        "no_new_privs": true,
+        "privilege_separated": true,
+        "protocol_version": "cindermote.browser-egress-worker/v2",
+        "uid": 988,
+        "user": "cindermote-proxy"
+      },
+      "firecracker_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+      "firecracker_version": "1.17.0",
+      "guest_writes_tmpfs_only": true,
+      "host_runtime_tmpfs": true,
+      "host_swap_disabled": true,
+      "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+      "jailer_supervision": {
+        "external_supervisor": true,
+        "parent_death_signal": "SIGTERM",
+        "startup_reconciliation": "exact-owned-prefix",
+        "vmm_process_group_kill": "SIGKILL"
+      },
+      "job_image_sha256": "dded2765053abbfd9a2e9a4362f4ee994db6eb0d7238060d86370dc40d2792dc",
+      "kernel_sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+      "mmds_enabled": false,
+      "network_mode": "explicit-proxy-only",
+      "rootfs_read_only": true,
+      "rootfs_receipt_sha256": "bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
+      "rootfs_sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
+      "vmm_exit_code": 137,
+      "vmm_identity": {
+        "gid": 986,
+        "group": "cindermote-vmm",
+        "uid": 989,
+        "user": "cindermote-vmm"
+      }
+    },
+    "schema_version": "cindermote.browser-probe-receipt/v2"
+  },
+  "budget_exhausted": false,
+  "budgets_granted": {
+    "cpu_vcpu": 1,
+    "fs_writes": "guest tmpfs only",
+    "interaction": "passive navigation only",
+    "max_events": 10000,
+    "max_network_bytes": 16777216,
+    "max_redirects": 8,
+    "max_tabs": 1,
+    "ram_mib": 1024,
+    "wall_clock_sec": 20
+  },
+  "canaries_touched": {},
+  "capabilities": {
+    "binding": {
+      "job_id": "mf-web-2f9b79a1",
+      "request_sha256": "1e5d7a8ce21e92fcaceabadb0d31884635693014442685d8f2f980adf904b08a"
+    },
+    "denied": [
+      "browser.click",
+      "browser.type",
+      "browser.upload",
+      "browser.download"
+    ],
+    "granted": [
+      "browser.navigate"
+    ],
+    "requested": [
+      "browser.navigate"
+    ]
+  },
+  "destinations_attempted": {
+    "example.org:443": [
+      "proxy_connect_authority_allowed"
+    ],
+    "https://example.org": [
+      "browser_cdp_web_origin_allowed"
+    ]
+  },
+  "detector_findings": [],
+  "gate": {
+    "final_authority": "policy_gate_autonomous",
+    "final_decision": "ALLOW",
+    "human_gate_override": "none",
+    "override_blocked_by_fail_closed": false,
+    "policy_gate_decision": "ALLOW",
+    "policy_gate_reason": "bounded_browser_navigation_clean"
+  },
+  "identity": {
+    "artifact_sha256": "1e5d7a8ce21e92fcaceabadb0d31884635693014442685d8f2f980adf904b08a",
+    "artifact_type": "browser-probe",
+    "job_id": "mf-web-2f9b79a1",
+    "received_at": "2026-10-17T05:05:58.888494+00:00",
+    "submitted_by": "local-cli"
+  },
+  "isolation": {
+    "cgroups_used": true,
+    "guest_writes_tmpfs_only": true,
+    "host_runtime_tmpfs": true,
+    "host_swap_disabled": true,
+    "jailer_used": true,
+    "kvm_used": true,
+    "mlock_used": false,
+    "mode": "firecracker",
+    "namespace_used": true,
+    "rootfs_read_only": true,
+    "seccomp_loaded": true
+  },
+  "outward_report": {
+    "canaries_tripped": [],
+    "capabilities_requested": [
+      "browser.navigate"
+    ],
+    "destinations": [
+      "example.org:443",
+      "https://example.org"
+    ],
+    "evidence": [],
+    "risk_level": "benign",
+    "uncertainty": 0.0
+  },
+  "purge": {
+    "cgroup_removed": true,
+    "egress_worker_reaped": true,
+    "network_namespace_removed": true,
+    "processes_reaped": true,
+    "ram_jail_removed": true,
+    "verified_externally": true
+  },
+  "receipt_signature": "16283cab84922e502e5c5e8e501a8a3437be4afb71142450afd9c2aa8d59cb62",
+  "residual_uncertainty": 0.0,
+  "snapshot_policy": {
+    "memory_snapshots": "disabled-v1",
+    "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+    "policy_version": "cindermote-hotcell-v1.3",
+    "snapshot_sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
+    "snapshot_verified_by": "host-observer (external hash + read-only drive)"
+  },
+  "telemetry_incomplete": false,
+  "telemetry_summary": {
+    "events_observed": 9,
+    "metadata_only": true,
+    "streams": {
+      "browser": {
+        "complete": true,
+        "event_count": 3,
+        "observed_event_count": 3
+      },
+      "cdp": {
+        "complete": true,
+        "event_count": 3,
+        "observed_event_count": 3
+      },
+      "egress": {
+        "complete": true,
+        "event_count": 1,
+        "observed_event_count": 1
+      },
+      "vm": {
+        "complete": true,
+        "event_count": 2,
+        "observed_event_count": 2
+      }
+    }
+  }
+}

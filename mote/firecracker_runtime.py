@@ -58,8 +58,8 @@ HOST_VETH_PATTERN = re.compile(r"^[0-9]+:\s+mfh([0-9a-f]{8})(?:@[^:]+)?:")
 DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ROOTFS_BUILD_INPUTS = {
     "base_image_digest": "sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
-    "debian_snapshot": "20260716T110000Z",
-    "chromium_package_version": "150.0.7871.124-1~deb12u1",
+    "debian_snapshot": "20261016T120000Z",
+    "chromium_package_version": "155.0.8059.79-1~deb12u1",
     "e2fsprogs_package_version": "1.47.0-2+b2",
     "fakeroot_package_version": "1.31-1.2",
     "platform_tools_url": "https://dl.google.com/android/repository/platform-tools_r33.0.3-linux.zip",
@@ -1136,6 +1136,98 @@ def _stage_copy(source: Path, destination: Path, mode: int) -> str:
     return digest.hexdigest()
 
 
+def _verified_staged_executable(path: Path, expected_sha256: str) -> bool:
+    """Verify an existing shared executable without following a symlink."""
+
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise FirecrackerRuntimeError("unsafe staged runtime executable") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or metadata.st_gid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o500
+        ):
+            raise FirecrackerRuntimeError("unsafe staged runtime executable")
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, 1024 * 1024):
+            digest.update(chunk)
+        if digest.hexdigest() != expected_sha256:
+            raise FirecrackerRuntimeError("trusted RAM asset pool changed")
+    finally:
+        os.close(descriptor)
+    return True
+
+
+def _stage_shared_executable(source: Path, destination: Path, expected_sha256: str) -> None:
+    if _verified_staged_executable(destination, expected_sha256):
+        return
+    source_fd = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(source_fd).st_mode):
+            raise FirecrackerRuntimeError("unsafe runtime executable source")
+        destination_fd, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}-", dir=destination.parent)
+        temporary = Path(temporary_name)
+        try:
+            try:
+                digest = hashlib.sha256()
+                while chunk := os.read(source_fd, 1024 * 1024):
+                    digest.update(chunk)
+                    view = memoryview(chunk)
+                    while view:
+                        written = os.write(destination_fd, view)
+                        if written <= 0:
+                            raise OSError(errno.EIO, "short write while staging runtime executable")
+                        view = view[written:]
+                if digest.hexdigest() != expected_sha256:
+                    raise FirecrackerRuntimeError("staged runtime asset hash mismatch")
+                os.fchmod(destination_fd, 0o500)
+                os.fsync(destination_fd)
+            finally:
+                os.close(destination_fd)
+            try:
+                # Publish once: concurrent same-pin staging may win, but never
+                # replace an executable already in use by another job.
+                os.link(temporary, destination, follow_symlinks=False)
+            except FileExistsError:
+                pass
+        finally:
+            temporary.unlink(missing_ok=True)
+    finally:
+        os.close(source_fd)
+    if not _verified_staged_executable(destination, expected_sha256):
+        raise FirecrackerRuntimeError("staged runtime executable disappeared")
+
+
+def _stage_runtime_executables(
+    runtime_root: Path, assets: dict[str, Path], firecracker_lock: dict[str, Any]
+) -> tuple[Path, Path]:
+    """Select an immutable-by-convention pool for this exact pinned pair."""
+
+    expected = [firecracker_lock.get(name) for name in ("binary_sha256", "jailer_sha256")]
+    if any(not isinstance(value, str) or not DIGEST_PATTERN.fullmatch(value) for value in expected):
+        raise FirecrackerRuntimeError("invalid runtime executable pin")
+    staged = runtime_root / "assets"
+    for parent in (runtime_root, staged):
+        trusted, _detail = _trusted_root_directory(parent)
+        if not trusted:
+            raise FirecrackerRuntimeError("unsafe runtime asset pool parent")
+    pool = staged / f"{expected[0]}-{expected[1]}"
+    pool.mkdir(mode=0o700, exist_ok=True)
+    trusted, _detail = _trusted_root_directory(pool)
+    if not trusted:
+        raise FirecrackerRuntimeError("unsafe runtime asset pool directory")
+    destinations = (pool / "firecracker", pool / "jailer")
+    for name, destination, digest in zip(("firecracker", "jailer"), destinations, expected):
+        _stage_shared_executable(assets[name], destination, digest)
+    return destinations
+
+
 def _prepare_job_image(
     path: Path,
     wrapper: dict[str, Any],
@@ -1594,22 +1686,7 @@ def run_browser_probe(
     }
     artifacts: dict[str, Any] = {"raw_retained": False}
     try:
-        # Stage the executable used by jailer into the trusted RAM mount.
-        staged = runtime / "assets"
-        staged.mkdir(parents=True, exist_ok=True)
-        staged_firecracker = staged / "firecracker"
-        staged_jailer = staged / "jailer"
-        for source, destination, expected, mode in (
-            (assets["firecracker"], staged_firecracker, lock["firecracker"]["binary_sha256"], 0o500),
-            (assets["jailer"], staged_jailer, lock["firecracker"]["jailer_sha256"], 0o500),
-        ):
-            if not destination.exists():
-                observed = _stage_copy(source, destination, mode)
-                if observed != expected:
-                    destination.unlink(missing_ok=True)
-                    raise FirecrackerRuntimeError("staged runtime asset hash mismatch")
-            elif _sha256_file(destination) != expected:
-                raise FirecrackerRuntimeError("trusted RAM asset pool changed")
+        staged_firecracker, staged_jailer = _stage_runtime_executables(runtime, assets, lock["firecracker"])
 
         paths.images.mkdir(parents=True, mode=0o500, exist_ok=False)
         os.chown(paths.images, vmm_uid, vmm_gid)

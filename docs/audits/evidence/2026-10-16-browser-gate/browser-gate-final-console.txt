@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/home/operator/Desktop/cindermote/tests/firecracker/e2e_supported_host.py", line 950, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/operator/Desktop/cindermote/tests/firecracker/e2e_supported_host.py", line 937, in main
+    result = run_gate(
+        origin=args.origin,
+    ...<4 lines>...
+        control_ca_file=args.control_ca_file,
+    )
+  File "/home/operator/Desktop/cindermote/tests/firecracker/e2e_supported_host.py", line 764, in run_gate
+    case_receipt = _verify_probe_receipt(
+        receipt, request, expected_finding, attempt_record=current_attempt
+    )
+  File "/home/operator/Desktop/cindermote/tests/firecracker/e2e_supported_host.py", line 612, in _verify_probe_receipt
+    raise AssertionError(
+        "browser case has incomplete infrastructure or telemetry evidence"
+    )
+AssertionError: browser case has incomplete infrastructure or telemetry evidence

@@ -10,6 +10,8 @@ import sys
 import tempfile
 import time
 import unittest
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -17,6 +19,42 @@ from unittest import mock
 from cindermote.gate.policy_gate import apply_scoring_matrix
 from cindermote.mote import firecracker_runtime as runtime
 from cindermote.mote.browser_contract import make_probe_request
+
+
+@contextmanager
+def _root_owned_runtime_metadata(*, file_uid: int = 0, file_gid: int = 0) -> Iterator[None]:
+    """Model root ownership while exercising real modes, links and file bytes."""
+
+    real_lstat = os.lstat
+    real_stat = os.stat
+    real_fstat = os.fstat
+
+    def owned(metadata: os.stat_result, uid: int, gid: int) -> os.stat_result:
+        fields = list(metadata)
+        fields[4:6] = [uid, gid]
+        return os.stat_result(fields)
+
+    with (
+        mock.patch.object(runtime.os, "lstat", side_effect=lambda *a, **kw: owned(real_lstat(*a, **kw), 0, 0)),
+        mock.patch.object(runtime.os, "stat", side_effect=lambda *a, **kw: owned(real_stat(*a, **kw), 0, 0)),
+        mock.patch.object(
+            runtime.os, "fstat", side_effect=lambda *a, **kw: owned(real_fstat(*a, **kw), file_uid, file_gid)
+        ),
+    ):
+        yield
+
+
+def _runtime_executable_fixture(root: Path, label: str) -> tuple[dict[str, Path], dict[str, str]]:
+    sources = root / label
+    sources.mkdir()
+    assets = {name: sources / name for name in ("firecracker", "jailer")}
+    for name, path in assets.items():
+        path.write_bytes(f"{label}-{name}".encode("ascii"))
+    lock = {
+        "binary_sha256": hashlib.sha256(assets["firecracker"].read_bytes()).hexdigest(),
+        "jailer_sha256": hashlib.sha256(assets["jailer"].read_bytes()).hexdigest(),
+    }
+    return assets, lock
 
 
 class FirecrackerRuntimePrimitiveTests(unittest.TestCase):
@@ -413,6 +451,138 @@ class FirecrackerRuntimePrimitiveTests(unittest.TestCase):
             self.assertEqual(observed, hashlib.sha256(source.read_bytes()).hexdigest())
             self.assertEqual(destination.read_bytes(), source.read_bytes())
             self.assertEqual(destination.stat().st_mode & 0o777, 0o400)
+
+    def test_runtime_executable_pin_upgrade_keeps_existing_bytes_and_basenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+            root = Path(temporary)
+            (root / "assets").mkdir(mode=0o700)
+            legacy = root / "assets" / "firecracker"
+            legacy.write_bytes(b"legacy fixed-path executable")
+            old_assets, old_lock = _runtime_executable_fixture(root, "old")
+            new_assets, new_lock = _runtime_executable_fixture(root, "new")
+
+            old_paths = runtime._stage_runtime_executables(root, old_assets, old_lock)
+            old_inodes = [path.stat().st_ino for path in old_paths]
+            new_paths = runtime._stage_runtime_executables(root, new_assets, new_lock)
+            repeated_paths = runtime._stage_runtime_executables(root, old_assets, old_lock)
+
+            for assets, lock, paths in ((old_assets, old_lock, old_paths), (new_assets, new_lock, new_paths)):
+                self.assertEqual(paths[0].parent.name, f"{lock['binary_sha256']}-{lock['jailer_sha256']}")
+                self.assertEqual(paths[0].parent, paths[1].parent)
+                for name, path in zip(("firecracker", "jailer"), paths):
+                    self.assertEqual(path.name, name)
+                    self.assertEqual(path.read_bytes(), assets[name].read_bytes())
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o500)
+            self.assertNotEqual(old_paths, new_paths)
+            self.assertEqual(repeated_paths, old_paths)
+            self.assertEqual([path.stat().st_ino for path in old_paths], old_inodes)
+            self.assertEqual(legacy.read_bytes(), b"legacy fixed-path executable")
+
+    def test_selected_runtime_pool_corruption_is_rejected_without_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+            root = Path(temporary)
+            (root / "assets").mkdir(mode=0o700)
+            assets, lock = _runtime_executable_fixture(root, "source")
+            pool = root / "assets" / f"{lock['binary_sha256']}-{lock['jailer_sha256']}"
+            pool.mkdir(mode=0o700)
+            corrupted = pool / "firecracker"
+            corrupted.write_bytes(b"unexpected selected bytes")
+            corrupted.chmod(0o500)
+            inode = corrupted.stat().st_ino
+
+            with self.assertRaisesRegex(runtime.FirecrackerRuntimeError, "trusted RAM asset pool changed"):
+                runtime._stage_runtime_executables(root, assets, lock)
+
+            self.assertEqual(corrupted.read_bytes(), b"unexpected selected bytes")
+            self.assertEqual(corrupted.stat().st_ino, inode)
+            self.assertEqual(list(pool.iterdir()), [corrupted])
+
+    def test_runtime_pool_rejects_unsafe_directories_and_symlinks(self) -> None:
+        for unsafe in ("parent-mode", "pool-mode", "pool-symlink", "file-symlink", "dangling-symlink"):
+            with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+                root = Path(temporary)
+                staged = root / "assets"
+                staged.mkdir(mode=0o700)
+                assets, lock = _runtime_executable_fixture(root, "source")
+                pool = staged / f"{lock['binary_sha256']}-{lock['jailer_sha256']}"
+                if unsafe == "parent-mode":
+                    staged.chmod(0o777)
+                elif unsafe == "pool-symlink":
+                    pool.symlink_to(root / "source", target_is_directory=True)
+                else:
+                    pool.mkdir(mode=0o700)
+                    if unsafe == "pool-mode":
+                        pool.chmod(0o755)
+                    else:
+                        (pool / "firecracker").symlink_to(
+                            assets["firecracker"] if unsafe == "file-symlink" else root / "missing"
+                        )
+                with self.assertRaises(runtime.FirecrackerRuntimeError):
+                    runtime._stage_runtime_executables(root, assets, lock)
+                self.assertEqual(assets["firecracker"].read_bytes(), b"source-firecracker")
+
+    def test_runtime_pool_rejects_wrong_file_owner_group_and_mode(self) -> None:
+        for uid, gid, mode in ((1, 0, 0o500), (0, 1, 0o500), (0, 0, 0o700)):
+            with self.subTest(uid=uid, gid=gid, mode=mode), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "firecracker"
+                path.write_bytes(b"pinned")
+                path.chmod(mode)
+                with _root_owned_runtime_metadata(file_uid=uid, file_gid=gid):
+                    with self.assertRaisesRegex(runtime.FirecrackerRuntimeError, "unsafe staged runtime executable"):
+                        runtime._verified_staged_executable(path, hashlib.sha256(b"pinned").hexdigest())
+
+    def test_runtime_pool_changed_source_is_not_published(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+            root = Path(temporary)
+            (root / "assets").mkdir(mode=0o700)
+            assets, lock = _runtime_executable_fixture(root, "source")
+            assets["firecracker"].write_bytes(b"changed since preflight")
+            with self.assertRaisesRegex(runtime.FirecrackerRuntimeError, "staged runtime asset hash mismatch"):
+                runtime._stage_runtime_executables(root, assets, lock)
+            pool = root / "assets" / f"{lock['binary_sha256']}-{lock['jailer_sha256']}"
+            self.assertEqual(list(pool.iterdir()), [])
+
+    def test_runtime_pool_concurrent_publication_never_replaces_winner(self) -> None:
+        for valid_winner in (True, False):
+            with self.subTest(valid_winner=valid_winner), tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+                root = Path(temporary)
+                (root / "assets").mkdir(mode=0o700)
+                assets, lock = _runtime_executable_fixture(root, "source")
+                pool = root / "assets" / f"{lock['binary_sha256']}-{lock['jailer_sha256']}"
+                winner_bytes = assets["firecracker"].read_bytes() if valid_winner else b"unexpected concurrent winner"
+                real_link = os.link
+                winner_inode = None
+
+                def concurrent_link(source: Path, destination: Path, **kwargs: object) -> None:
+                    nonlocal winner_inode
+                    if destination.name == "firecracker":
+                        destination.write_bytes(winner_bytes)
+                        destination.chmod(0o500)
+                        winner_inode = destination.stat().st_ino
+                        raise FileExistsError(destination)
+                    real_link(source, destination, **kwargs)
+
+                with mock.patch.object(runtime.os, "link", side_effect=concurrent_link):
+                    if valid_winner:
+                        runtime._stage_runtime_executables(root, assets, lock)
+                    else:
+                        with self.assertRaisesRegex(runtime.FirecrackerRuntimeError, "trusted RAM asset pool changed"):
+                            runtime._stage_runtime_executables(root, assets, lock)
+                self.assertEqual((pool / "firecracker").read_bytes(), winner_bytes)
+                self.assertEqual((pool / "firecracker").stat().st_ino, winner_inode)
+                self.assertFalse(any(path.name.startswith(".") for path in pool.iterdir()))
+
+    def test_runtime_pool_rejects_invalid_pin_before_creating_pool(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, _root_owned_runtime_metadata():
+            root = Path(temporary)
+            (root / "assets").mkdir(mode=0o700)
+            assets, lock = _runtime_executable_fixture(root, "source")
+            for invalid in ("../outside", "a" * 63, "A" * 64, True, None):
+                with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                    runtime.FirecrackerRuntimeError, "invalid runtime executable pin"
+                ):
+                    runtime._stage_runtime_executables(root, assets, {**lock, "binary_sha256": invalid})
+            self.assertEqual(list((root / "assets").iterdir()), [])
 
     def test_guest_artifacts_are_strict_metadata_only(self) -> None:
         digest = "a" * 64

@@ -1,0 +1,87 @@
+{
+  "events": [
+    {
+      "connect_authority": null,
+      "disposition": "started",
+      "kind": "lifecycle",
+      "sequence": 0,
+      "source": "vm",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "started",
+      "kind": "lifecycle",
+      "sequence": 0,
+      "source": "browser",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "allowed",
+      "kind": "network_request",
+      "sequence": 0,
+      "source": "cdp",
+      "web_origin": "https://february-either-pavilion-teach.trycloudflare.com"
+    },
+    {
+      "connect_authority": null,
+      "disposition": "committed",
+      "kind": "navigation",
+      "sequence": 1,
+      "source": "cdp",
+      "web_origin": "https://february-either-pavilion-teach.trycloudflare.com"
+    },
+    {
+      "connect_authority": null,
+      "disposition": "active",
+      "kind": "browser_sandbox",
+      "sequence": 1,
+      "source": "browser",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "stopped",
+      "kind": "lifecycle",
+      "sequence": 2,
+      "source": "browser",
+      "web_origin": null
+    },
+    {
+      "connect_authority": "february-either-pavilion-teach.trycloudflare.com:443",
+      "disposition": "allowed",
+      "kind": "network_request",
+      "sequence": 0,
+      "source": "egress",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "stopped",
+      "kind": "lifecycle",
+      "sequence": 1,
+      "source": "vm",
+      "web_origin": null
+    }
+  ],
+  "evidence_version": "cindermote.browser-evidence/v2",
+  "streams": {
+    "browser": {
+      "complete": true,
+      "event_count": 3
+    },
+    "cdp": {
+      "complete": true,
+      "event_count": 2
+    },
+    "egress": {
+      "complete": true,
+      "event_count": 1
+    },
+    "vm": {
+      "complete": true,
+      "event_count": 2
+    }
+  }
+}

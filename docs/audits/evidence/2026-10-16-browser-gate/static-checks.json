@@ -1,0 +1,85 @@
+{
+  "all_passed": true,
+  "checks": [
+    {
+      "argv": [
+        ".venv/bin/ruff",
+        "check",
+        "."
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "All checks passed!\n"
+    },
+    {
+      "argv": [
+        ".venv/bin/mypy",
+        "cli.py",
+        "kernel_laws.py",
+        "capability_brokers.py",
+        "collapse_mesh.py",
+        "scripts/open-agent-probe-evidence.py",
+        "scripts/verify-incident-gate-evidence.py",
+        "agent_probe/broker.py",
+        "agent_probe/canonical.py",
+        "agent_probe/contract.py",
+        "agent_probe/crypto.py",
+        "agent_probe/evidence.py",
+        "agent_probe/hpke.py",
+        "agent_probe/ksl.py",
+        "agent_probe/protocol.py",
+        "agent_probe/receipt.py",
+        "agent_probe/runner.py",
+        "agent_probe/secretstream.py"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "Success: no issues found in 17 source files\n"
+    },
+    {
+      "argv": [
+        ".venv/bin/python",
+        "-B",
+        "cli.py",
+        "kernel-laws"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "Kernel Laws Verification: PASS (0 errors; checked 6 seams, 12 capabilities, 8 cues, 15 components)\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "-n",
+        "scripts/build-firecracker-image.sh",
+        "scripts/fetch-firecracker.sh"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "dash",
+        "-n",
+        "guest/cindermote-init"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "schema_version": "cindermote.browser-static-checks/v1",
+  "source_commit": "6c9a0916fced21f179b0d1a42195c9f65813ca8f",
+  "tracked_python_files_compiled": 95
+}

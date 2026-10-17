@@ -3,7 +3,10 @@
 The supported Void host (`6.18.57_1`) passed all 24 required Firecracker
 preflight checks. Two temporary public HTTPS origins pointed to an
 operator-controlled fixture; the gate verified that both served the expected
-fixture source hash. The fixture control token stayed local. Each attempt
+fixture source hash. The fixture control token was excluded from published
+artifacts; these historical runs sent it to the public HTTPS control URLs
+through the tunnel provider. The later browser-gate remediation adds a
+certificate-verified loopback control channel. Each attempt
 booted the pinned Firecracker/jailer/kernel and a newly built, hash-pinned
 Chromium rootfs. The gate's clean case ran first and stopped the five-case
 sequence when its expected `ALLOW` was not met.

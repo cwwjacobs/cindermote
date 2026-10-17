@@ -36,6 +36,10 @@ MAX_WS_MESSAGE = 8 * 1024 * 1024
 MAX_CDP_COMMANDS = 50_000
 MAX_ATTESTATION_CHARS = 512 * 1024
 MAX_ATTESTATION_NODES = 10_000
+MAX_RESPONSE_HEADERS = 256
+MAX_RESPONSE_HEADER_BYTES = 64 * 1024
+MAX_DOCUMENT_BODY_BYTES = 4 * 1024 * 1024
+HTTP_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$")
 PR_SET_DUMPABLE = 4
 FAILURE_STAGES = frozenset(
     {
@@ -86,6 +90,7 @@ CDP_SETUP_COMMANDS: tuple[tuple[str, dict[str, Any] | None], ...] = (
     ("Runtime.enable", None),
     ("Log.enable", None),
     ("Security.enable", None),
+    ("Audits.enable", None),
     (
         "Target.setAutoAttach",
         {
@@ -100,7 +105,13 @@ CDP_SETUP_COMMANDS: tuple[tuple[str, dict[str, Any] | None], ...] = (
     ),
     ("Target.setDiscoverTargets", {"discover": True}),
     ("Page.setInterceptFileChooserDialog", {"enabled": True}),
-    ("Fetch.enable", {"patterns": [{"urlPattern": "*", "requestStage": "Request"}]}),
+    (
+        "Fetch.enable",
+        {"patterns": [
+            {"urlPattern": "*", "requestStage": "Request"},
+            {"urlPattern": "*", "resourceType": "Document", "requestStage": "Response"},
+        ]},
+    ),
     ("Browser.setDownloadBehavior", {"behavior": "deny", "eventsEnabled": True}),
 )
 
@@ -376,11 +387,17 @@ class WebSocket:
             pass
 
 
+# An unconfirmed browser must retain both its process handle and DevTools
+# connection until the host revokes egress and kills the VM. In particular,
+# neither stack unwinding nor normal collector exit may detach interception.
+_termination_guards: list[tuple[subprocess.Popen[bytes], WebSocket | None]] = []
+
+
 class CDP:
     def __init__(self, websocket: WebSocket, evidence: Evidence, request: dict[str, Any]) -> None:
         self.websocket = websocket
         self.evidence = evidence
-        self.request = request
+        self.request = validate_probe_request(request)
         self.next_id = 1
         self.responses: dict[int, dict[str, Any]] = {}
         self.console_events = 0
@@ -424,6 +441,14 @@ class CDP:
             return
         if method == "Fetch.requestPaused":
             self._handle_paused(params)
+        elif method == "Audits.issueAdded":
+            self._handle_audit_issue(params)
+        elif method in {"Network.webSocketCreated", "Network.webTransportCreated"}:
+            # Native creation events cover channels Fetch does not intercept.
+            # This is observation, not proof that the handshake was prevented;
+            # an enforced CSP issue is the earlier blocking boundary. Never
+            # retain URL, initiator, or protocol data from these events.
+            self.evidence.add("cdp", "active_interaction", "attempted")
         elif method == "Page.lifecycleEvent":
             frame_id = params.get("frameId")
             loader_id = params.get("loaderId")
@@ -474,6 +499,52 @@ class CDP:
             return origin_for_url(url)
         except BrowserContractError:
             return None
+
+    def _handle_audit_issue(self, params: dict[str, Any]) -> None:
+        issue = params.get("issue")
+        if not isinstance(issue, dict) or issue.get("code") != "ContentSecurityPolicyIssue":
+            return
+        details = issue.get("details")
+        violation = details.get("contentSecurityPolicyIssueDetails") if isinstance(details, dict) else None
+        if not isinstance(violation, dict):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP audit metadata is malformed")
+        directive = violation.get("violatedDirective")
+        report_only = violation.get("isReportOnly")
+        if (
+            not isinstance(directive, str)
+            or not directive.strip()
+            or len(directive) > 1024
+            or not isinstance(report_only, bool)
+        ):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP audit disposition is malformed")
+        if report_only or directive.split(None, 1)[0].lower() != "connect-src":
+            return
+        blocked_url = violation.get("blockedURL")
+        if (
+            violation.get("contentSecurityPolicyViolationType") != "kURLViolation"
+            or not isinstance(blocked_url, str)
+            or not 1 <= len(blocked_url) <= 4096
+        ):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP connection audit is malformed")
+        try:
+            scheme = urlsplit(blocked_url).scheme.lower()
+        except ValueError as exc:
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP connection URL is malformed") from exc
+        # Native CSP enforcement rejects WebSockets before their channel is
+        # created, so webSocketCreated/Fetch.requestPaused need not be emitted.
+        # Retain only the attempt: evidence v1 does not represent ws/wss origins.
+        if scheme in {"ws", "wss"}:
+            self.evidence.add("cdp", "active_interaction", "attempted")
+        else:
+            origin = self._safe_origin(blocked_url)
+            if origin is not None:
+                self.evidence.add("cdp", "network_request", "blocked", origin)
+            else:
+                self.evidence.add("cdp", "active_interaction", "attempted")
 
     def _record_url(self, kind: str, disposition: str, url: Any) -> None:
         if isinstance(url, str) and url in {"about:blank", "about:srcdoc"}:
@@ -538,8 +609,13 @@ class CDP:
     def _handle_paused(self, params: dict[str, Any]) -> None:
         request_id = params.get("requestId")
         request = params.get("request", {})
-        if not isinstance(request_id, str) or not isinstance(request, dict):
+        if not isinstance(request_id, str) or not 1 <= len(request_id) <= 256 or not isinstance(request, dict):
             self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("paused request metadata is malformed")
+        if any(name in params for name in (
+            "responseStatusCode", "responseErrorReason", "responseHeaders", "responseStatusText",
+        )):
+            self._handle_document_response(params)
             return
         url = request.get("url")
         method = request.get("method")
@@ -594,6 +670,132 @@ class CDP:
             self.command(action, arguments)
         except AgentError:
             self.evidence.add("cdp", "telemetry_loss", "observed")
+
+    def _handle_document_response(self, params: dict[str, Any]) -> None:
+        request_id = params["requestId"]
+        request = params["request"]
+        try:
+            url = request.get("url")
+            if (
+                params.get("resourceType") != "Document"
+                or request.get("method") not in {"GET", "HEAD"}
+                or not isinstance(url, str)
+                or not is_authorized_url(url, self.request["authorized_origins"])
+                or "responseErrorReason" in params
+            ):
+                raise AgentError("document response is unavailable or unauthorized")
+            status = params.get("responseStatusCode")
+            headers = params.get("responseHeaders")
+            phrase = params.get("responseStatusText")
+            if (
+                not isinstance(status, int)
+                or isinstance(status, bool)
+                or not 100 <= status <= 599
+                or not isinstance(headers, list)
+                or len(headers) >= MAX_RESPONSE_HEADERS
+                or (phrase is not None and (
+                    not isinstance(phrase, str)
+                    or len(phrase) > 256
+                    or any(not 32 <= ord(char) <= 126 for char in phrase)
+                ))
+            ):
+                raise AgentError("document response status or headers are malformed")
+            bounded_headers = []
+            header_bytes = 0
+            for header in headers:
+                if not isinstance(header, dict) or set(header) != {"name", "value"}:
+                    raise AgentError("document response header is malformed")
+                name, value = header["name"], header["value"]
+                if (
+                    not isinstance(name, str)
+                    or HTTP_HEADER_NAME.fullmatch(name) is None
+                    or not isinstance(value, str)
+                    or len(value) > 16384
+                    or any(ord(char) < 32 and char != "\t" or ord(char) == 127 for char in value)
+                ):
+                    raise AgentError("document response header is malformed")
+                header_bytes += len(name.encode("ascii")) + len(value.encode("utf-8")) + 4
+                if header_bytes > MAX_RESPONSE_HEADER_BYTES:
+                    raise AgentError("document response headers exceed their budget")
+                bounded_headers.append({"name": name, "value": value})
+            if status in {301, 302, 303, 307, 308} and any(
+                header["name"].lower() == "location" and header["value"].strip()
+                for header in bounded_headers
+            ):
+                # Redirect bodies are unavailable through getResponseBody and
+                # never execute as a document. Keep the response unchanged;
+                # every next-hop request and final document is intercepted.
+                self.command("Fetch.continueResponse", {"requestId": request_id})
+                return
+
+            body_result = self.command("Fetch.getResponseBody", {"requestId": request_id})
+            body_limit = min(MAX_DOCUMENT_BODY_BYTES, self.request["budgets"]["max_network_bytes"])
+            encoded = body_result.get("body")
+            if (
+                set(body_result) != {"body", "base64Encoded"}
+                or body_result.get("base64Encoded") is not True
+                or not isinstance(encoded, str)
+                or len(encoded) > 4 * ((body_limit + 2) // 3)
+            ):
+                raise AgentError("document body is unavailable or exceeds its budget")
+            body = base64.b64decode(encoded, validate=True)
+            if len(body) > body_limit or base64.b64encode(body).decode("ascii") != encoded:
+                raise AgentError("document body is malformed or exceeds its budget")
+            if not body:
+                # Do not risk an empty Binary being treated as absent by a
+                # browser build: absent bodies retain stale parsed CSP. Until
+                # that native edge is proven, empty documents fail closed.
+                raise AgentError("empty document body cannot establish response policy")
+
+            # Explicit HTTP(S) sources retain passive Fetch/XHR while excluding
+            # ws/wss. 'self' would also authorize same-host secure WebSockets.
+            # A second policy intersects with existing CSP instead of replacing
+            # it. Chromium's Fetch body reader returns content-decoded bytes,
+            # not character-decoded text: preserve those bytes and Content-Type
+            # charset, but remove stale compression/framing and length headers.
+            # Body data stays inside the guest and never enters evidence.
+            bounded_headers = [
+                header for header in bounded_headers
+                if header["name"].lower() not in {
+                    "content-encoding", "transfer-encoding", "content-length",
+                }
+            ]
+            csp_header = {
+                "name": "Content-Security-Policy",
+                "value": "connect-src " + " ".join(self.request["authorized_origins"]),
+            }
+            bounded_headers.append(csp_header)
+            bounded_headers.append({"name": "Content-Length", "value": str(len(body))})
+            header_bytes = sum(
+                len(header["name"]) + len(header["value"].encode("utf-8")) + 4
+                for header in bounded_headers
+            )
+            if len(bounded_headers) > MAX_RESPONSE_HEADERS or header_bytes > MAX_RESPONSE_HEADER_BYTES:
+                raise AgentError("restricted document headers exceed their budget")
+            arguments: dict[str, Any] = {
+                "requestId": request_id,
+                "responseCode": status,
+                "responseHeaders": bounded_headers,
+                # Supplying a body forces Chromium to create a fresh response
+                # head and parse the added policy. Header-only continueResponse
+                # preserves the original parsed_headers and does not enforce it.
+                "body": encoded,
+            }
+            # HTTP/2 has no reason phrase; Chromium reports an empty string.
+            # Passing that explicitly makes fulfillRequest reject the status.
+            # Omitting it lets Chromium use its normal status phrase.
+            if phrase:
+                arguments["responsePhrase"] = phrase
+            self.command("Fetch.fulfillRequest", arguments)
+        except (AgentError, BrowserContractError, UnicodeError, ValueError) as exc:
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            try:
+                self.command("Fetch.failRequest", {
+                    "requestId": request_id, "errorReason": "BlockedByClient",
+                })
+            except AgentError:
+                pass
+            raise AgentError("document response restriction failed") from exc
 
     def pump_until_loaded(self, frame_id: str, loader_id: str, deadline: float) -> None:
         expected = (frame_id, loader_id)
@@ -688,6 +890,42 @@ def _sandbox_active(browser_pid: int) -> bool:
     return bool(renderers) and all(renderers)
 
 
+def _stop_browser(process: subprocess.Popen[bytes], websocket: WebSocket | None) -> None:
+    # Detaching DevTools can resume paused Fetch requests. Keep interception
+    # attached until the browser has exited; inability to confirm exit fails
+    # the probe rather than claiming complete observation.
+    try:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired as exc:
+            raise AgentError("Chromium termination was not confirmed") from exc
+    except BaseException as exc:
+        _termination_guards.append((process, websocket))
+        raise AgentError("Chromium termination was not confirmed") from exc
+    if websocket is not None:
+        websocket.close()
+
+
+def _hold_for_host_termination() -> None:
+    if not _termination_guards:
+        return
+    # The bounded failure result is sent before this hold. The host owns the
+    # outer deadline and stops the proxy before terminating the microVM. Keep
+    # CDP attached even if sending that result failed; the host also tears down
+    # on channel failure. Never retry navigation or release a paused request.
+    while True:
+        try:
+            time.sleep(1)
+        except BaseException:
+            # Catchable Python interruptions cannot turn the hold into normal
+            # process exit, which would close the retained DevTools socket.
+            continue
+
+
 _PAGE_ATTESTATION = r"""
 (() => {
   const marker = /(ignore\s+(all|any|the|previous)|system\s+message|developer\s+message|assistant\s+instruction|tool\s+call|jailbreak|override\s+policy)/i;
@@ -756,8 +994,15 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
     evidence.add("browser", "lifecycle", "started")
     _set_probe_stage("chromium_start")
     command = [
-        "/usr/bin/chromium",
+        # The dedicated shell omits desktop profile services (for example
+        # ListAccounts) which ignore disable-background-networking. The host
+        # still observes every proxy attempt; none are exempted as startup.
+        "/usr/bin/chromium-headless-shell",
         "--headless",
+        # Deny new contents in the browser process before popup navigation.
+        # Page.windowOpen still reports the native attempt; pausing and closing
+        # a child target alone can happen after its first network request.
+        "--block-new-web-contents",
         f"--user-data-dir={profile}",
         "--remote-debugging-address=127.0.0.1",
         "--remote-debugging-port=0",
@@ -826,6 +1071,10 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         cdp.pump_until_loaded(navigation_frame, navigation_loader, deadline)
         if cdp.main_frame_id != navigation_frame:
             raise AgentError("committed main frame differs from the target navigation")
+        # Observation ends at this load-event snapshot. Freeze page execution
+        # while collecting metadata so timers cannot race the final CDP read
+        # and teardown; Fetch interception remains attached until termination.
+        cdp.command("Page.setWebLifecycleState", {"state": "frozen"})
         _set_probe_stage("attestation")
         isolated_world = cdp.command(
             "Page.createIsolatedWorld",
@@ -914,29 +1163,24 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         raise
     finally:
         try:
-            if websocket is not None:
-                websocket.close()
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                pass
+            _stop_browser(process, websocket)
             # Give the proxy a bounded chance to observe the browser's TCP
             # close before the host revokes egress. A still-open tunnel remains
             # incomplete and must fail closed in the host evidence reducer.
             time.sleep(0.5)
         except BaseException:
             _set_probe_stage("teardown")
+            evidence.add("browser", "lifecycle", "failed")
+            evidence.add("cdp", "telemetry_loss", "observed")
+            evidence.complete["browser"] = False
+            evidence.complete["cdp"] = False
             raise
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        return 2
     try:
+        if len(sys.argv) != 2:
+            return 2
         _disable_collector_dumpability()
         wrapper = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
         if not isinstance(wrapper, dict):
@@ -987,6 +1231,8 @@ def main() -> int:
         return 0 if "error" not in result else 1
     except BaseException:
         return 125
+    finally:
+        _hold_for_host_termination()
 
 
 if __name__ == "__main__":

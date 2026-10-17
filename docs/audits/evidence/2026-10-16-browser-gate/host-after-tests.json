@@ -1,0 +1,173 @@
+{
+  "fixture_loopback_listener_closed": true,
+  "host_preflight_after_tests": {
+    "checks": [
+      {
+        "detail": "/home/operator/Desktop/cindermote/policy/firecracker-assets.lock.json",
+        "name": "asset_lock",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+        "name": "firecracker_binary",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+        "name": "jailer_binary",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "sha256:c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+        "name": "guest_kernel",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "Chromium 155.0.8059.79; sha256:7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d; receipt=bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
+        "name": "browser_rootfs",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "euid=0 (jailer/network setup require root)",
+        "name": "root_privilege",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "user=cindermote-vmm; group=cindermote-vmm; uid=989; gid=986; home=/nonexistent; shell=/usr/sbin/nologin; password=locked",
+        "name": "dedicated_vmm_identity",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "user=cindermote-proxy; group=cindermote-proxy; uid=988; gid=985; home=/nonexistent; shell=/usr/sbin/nologin; password=locked",
+        "name": "dedicated_proxy_identity",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_runtime_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/dev/kvm rw",
+        "name": "kvm",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/dev/net/tun rw",
+        "name": "tun",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "fs=tmpfs; mount=/run/cindermote; options=inode64,mode=700,nodev,nosuid,noswap,relatime,rw,size=8388608k",
+        "name": "ram_runtime",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_jailer_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_assets_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "uid=0; gid=0; mode=0700",
+        "name": "ram_locks_permissions",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "fs=tmpfs; mount=/run/cindermote/jailer; options=inode64,mode=700,nosuid,noswap,relatime,rw,size=6291456k",
+        "name": "ram_jailer_runtime",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "disabled",
+        "name": "host_swap_disabled",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/sys/fs/cgroup/cindermote",
+        "name": "delegated_cgroup_v2",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/ip",
+        "name": "command_ip",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/nft",
+        "name": "command_nft",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/mkfs.ext4",
+        "name": "command_mkfs.ext4",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/python3",
+        "name": "command_python3",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "/usr/sbin/sysctl",
+        "name": "command_sysctl",
+        "ok": true,
+        "required": true
+      },
+      {
+        "detail": "host=6.18.57_1; target=6.18.x; tmpfs_noswap=proven on runtime mounts",
+        "name": "competition_host_kernel",
+        "ok": true,
+        "required": true
+      }
+    ],
+    "profile": "browser",
+    "ready": true
+  },
+  "owned_stale_job_tokens": [],
+  "schema_version": "cindermote.browser-audit-host-cleanup/v1",
+  "scope": "Task-owned temporary helpers stopped; prepared RAM runtime retained",
+  "temporary_fixture_and_tunnels": [
+    {
+      "pid": 26571,
+      "state": "absent",
+      "stopped_or_zombie": true
+    },
+    {
+      "pid": 28507,
+      "state": "absent",
+      "stopped_or_zombie": true
+    },
+    {
+      "pid": 28876,
+      "state": "absent",
+      "stopped_or_zombie": true
+    }
+  ]
+}
