@@ -52,8 +52,8 @@ from cindermote.mote.firecracker_runtime import (
     _read_line,
     _rootfs_receipt_check,
     _setup_network,
-    _sha256_file,
     _stage_copy,
+    _stage_runtime_executables,
     _supervised_jailer_command,
     _terminate,
     _vmm_identity_check,
@@ -446,21 +446,7 @@ def run_agent_probe_microvm(
 
     stage = "runtime_assets"
     try:
-        staged = runtime / "assets"
-        staged.mkdir(parents=True, exist_ok=True)
-        staged_firecracker = staged / "firecracker"
-        staged_jailer = staged / "jailer"
-        for source, destination, expected, mode in (
-            (assets["firecracker"], staged_firecracker, lock["firecracker"]["binary_sha256"], 0o500),
-            (assets["jailer"], staged_jailer, lock["firecracker"]["jailer_sha256"], 0o500),
-        ):
-            if not destination.exists():
-                observed = _stage_copy(source, destination, mode)
-                if observed != expected:
-                    destination.unlink(missing_ok=True)
-                    raise AgentProbeRuntimeError("staged runtime asset hash mismatch")
-            elif _sha256_file(destination) != expected:
-                raise AgentProbeRuntimeError("trusted RAM asset pool changed")
+        staged_firecracker, staged_jailer = _stage_runtime_executables(runtime, assets, lock["firecracker"])
 
         stage = "guest_images"
         paths.images.mkdir(parents=True, mode=0o500, exist_ok=False)
