@@ -112,6 +112,8 @@ _BROWSER_RUNTIME_OPTIONAL_KEYS = {
     "egress_worker",
     "vmm_exit_code",
     "cgroup_limits",
+    "guest_failure_stage",
+    "guest_failure_code",
 }
 _BROWSER_DESTINATION_LABELS = {
     "proxy_http_origin_allowed",
@@ -398,6 +400,27 @@ def _validate_browser_probe_section(receipt: dict) -> None:
         raise ValueError("browser runtime identity is incomplete")
     if not isinstance(runtime["admitted"], bool):
         raise ValueError("browser runtime admission must be bool")
+    if "guest_failure_stage" in runtime and (
+        runtime["admitted"]
+        or runtime["guest_failure_stage"] not in {
+            "request_validation", "chromium_start", "devtools_ready",
+            "cdp_setup", "navigation", "page_load", "attestation",
+            "screenshot", "teardown",
+        }
+    ):
+        raise ValueError("browser guest failure stage is invalid")
+    if "guest_failure_code" in runtime and (
+        runtime["admitted"]
+        or not isinstance(runtime["guest_failure_code"], str)
+        or not (
+            runtime["guest_failure_code"] in {
+                "deadline", "cdp_navigation_command", "navigation_error_text",
+                "navigation_no_loader", "agent_error", "io_error", "unexpected_error",
+            }
+            or re.fullmatch(r"navigation_err_[a-z0-9_]{1,64}", runtime["guest_failure_code"])
+        )
+    ):
+        raise ValueError("browser guest failure code is invalid")
     for name in (
         "firecracker_sha256",
         "jailer_sha256",

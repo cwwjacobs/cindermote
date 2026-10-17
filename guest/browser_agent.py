@@ -15,6 +15,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import secrets
 import signal
 import socket
@@ -36,6 +37,20 @@ MAX_CDP_COMMANDS = 50_000
 MAX_ATTESTATION_CHARS = 512 * 1024
 MAX_ATTESTATION_NODES = 10_000
 PR_SET_DUMPABLE = 4
+FAILURE_STAGES = frozenset(
+    {
+        "request_validation",
+        "chromium_start",
+        "devtools_ready",
+        "cdp_setup",
+        "navigation",
+        "page_load",
+        "attestation",
+        "screenshot",
+        "teardown",
+    }
+)
+_probe_stage = "request_validation"
 
 # Fetch.requestPaused reports Chromium's network resource classification.  A
 # request is only passive when both its method and its resource type are on an
@@ -101,6 +116,33 @@ from browser_contract import (  # noqa: E402
 
 class AgentError(RuntimeError):
     pass
+
+
+class ProbeFailure(AgentError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+def _failure_code(exc: BaseException) -> str:
+    if isinstance(exc, ProbeFailure):
+        return exc.code
+    if isinstance(exc, TimeoutError):
+        return "deadline"
+    if isinstance(exc, AgentError) and str(exc) == "CDP command failed: Page.navigate":
+        return "cdp_navigation_command"
+    if isinstance(exc, AgentError):
+        return "agent_error"
+    if isinstance(exc, OSError):
+        return "io_error"
+    return "unexpected_error"
+
+
+def _set_probe_stage(stage: str) -> None:
+    global _probe_stage
+    if stage not in FAILURE_STAGES:
+        raise AgentError("invalid browser probe stage")
+    _probe_stage = stage
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -505,6 +547,17 @@ class CDP:
         passive_resource = (
             isinstance(resource_type, str) and resource_type in PASSIVE_RESOURCE_TYPES
         )
+        # Chromium classifies its automatic favicon fetch as "Other". Accept
+        # only the conventional same-origin icon path; all other unknown
+        # resource types still fail closed.
+        if isinstance(url, str) and resource_type == "Other":
+            parsed = urlsplit(url)
+            passive_resource = (
+                parsed.scheme == "https"
+                and parsed.path == "/favicon.ico"
+                and not parsed.query
+                and not parsed.fragment
+            )
         allowed = False
         origin: str | None = None
         if isinstance(url, str):
@@ -681,6 +734,7 @@ _PAGE_ATTESTATION = r"""
 
 
 def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
+    _set_probe_stage("request_validation")
     request = validate_probe_request(wrapper.get("probe_request"))
     runtime = wrapper.get("runtime")
     if not isinstance(runtime, dict) or set(runtime) != {"nonce", "proxy_url"}:
@@ -700,6 +754,7 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
     os.chown(profile, 1000, 1000)
     os.chown(cache, 1000, 1000)
     evidence.add("browser", "lifecycle", "started")
+    _set_probe_stage("chromium_start")
     command = [
         "/usr/bin/chromium",
         "--headless",
@@ -745,6 +800,7 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
     websocket: WebSocket | None = None
     artifacts: dict[str, Any] = {"raw_retained": False}
     try:
+        _set_probe_stage("devtools_ready")
         port, _ = _wait_devtools(profile, process, deadline)
         endpoint = _page_websocket(port, deadline)
         parsed = urlsplit(endpoint)
@@ -752,20 +808,25 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
             raise AgentError("DevTools exposed an unexpected websocket endpoint")
         websocket = WebSocket("127.0.0.1", port, parsed.path, deadline)
         cdp = CDP(websocket, evidence, request)
+        _set_probe_stage("cdp_setup")
         for method, params in CDP_SETUP_COMMANDS:
             cdp.command(method, params)
+        _set_probe_stage("navigation")
         navigation = cdp.command("Page.navigate", {"url": request["url"]})
         navigation_frame = navigation.get("frameId")
         navigation_loader = navigation.get("loaderId")
-        if (
-            not isinstance(navigation_frame, str)
-            or not isinstance(navigation_loader, str)
-            or navigation.get("errorText")
-        ):
-            raise AgentError("target navigation was not bound to a new loader")
+        error_text = navigation.get("errorText")
+        if error_text:
+            if isinstance(error_text, str) and re.fullmatch(r"net::ERR_[A-Z0-9_]{1,64}", error_text):
+                raise ProbeFailure("navigation_" + error_text[5:].lower())
+            raise ProbeFailure("navigation_error_text")
+        if not isinstance(navigation_frame, str) or not isinstance(navigation_loader, str):
+            raise ProbeFailure("navigation_no_loader")
+        _set_probe_stage("page_load")
         cdp.pump_until_loaded(navigation_frame, navigation_loader, deadline)
         if cdp.main_frame_id != navigation_frame:
             raise AgentError("committed main frame differs from the target navigation")
+        _set_probe_stage("attestation")
         isolated_world = cdp.command(
             "Page.createIsolatedWorld",
             {
@@ -825,6 +886,7 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
             evidence.add("cdp", "prompt_marker", "visible")
         for _ in range(min(hidden_count, 100)):
             evidence.add("cdp", "prompt_marker", "hidden")
+        _set_probe_stage("screenshot")
         screenshot = cdp.command("Page.captureScreenshot", {"format": "png", "fromSurface": True})
         encoded = screenshot.get("data")
         if not isinstance(encoded, str) or len(encoded) > 16 * 1024 * 1024:
@@ -851,16 +913,24 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         evidence.complete["cdp"] = False
         raise
     finally:
-        if websocket is not None:
-            websocket.close()
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            pass
+            if websocket is not None:
+                websocket.close()
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            # Give the proxy a bounded chance to observe the browser's TCP
+            # close before the host revokes egress. A still-open tunnel remains
+            # incomplete and must fail closed in the host evidence reducer.
+            time.sleep(0.5)
+        except BaseException:
+            _set_probe_stage("teardown")
+            raise
 
 
 def main() -> int:
@@ -901,13 +971,15 @@ def main() -> int:
                 "evidence": evidence.bundle(),
                 **metadata,
             }
-        except BaseException:
+        except BaseException as exc:
             result = {
                 "type": "result",
                 "nonce": nonce,
                 "agent_version": AGENT_VERSION,
                 "evidence": evidence.bundle(),
                 "error": "guest_probe_failed",
+                "failure_stage": _probe_stage,
+                "failure_code": _failure_code(exc),
             }
         _write_json_line(channel, result)
         channel.close()

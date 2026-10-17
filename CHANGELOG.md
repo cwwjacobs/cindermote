@@ -40,6 +40,13 @@ imported them.
 
 ### Added
 
+- Controlled-fixture browser follow-up with four retained signed failures,
+  local HMAC/schema/reduction verification, public checksums, and clear
+  command-line instructions for creating and inspecting runs. The five-case
+  gate still fails at its clean case because Chromium makes blocked background
+  requests; no browser `ALLOW` is claimed.
+- Bounded browser failure stage/code in signed receipts, without returning
+  untrusted URL or page text.
 - `scripts/open-agent-probe-evidence.py`: the offline viewer for sealed guest
   evidence. It escapes hostile text so terminal control sequences are not
   interpreted.
@@ -68,6 +75,10 @@ imported them.
 
 ### Changed
 
+- The Firecracker rootfs build context now allows only pinned image inputs,
+  excluding local keys and audit state from transfer to Docker. Guest init
+  disables unused IPv6, Chromium's exact authorized favicon fetch is handled
+  as passive, and browser teardown gives proxy tunnel closure a short drain.
 - **Behavior change:** as root, the legacy namespace runner now requires a writable
   cgroup v2 mount and is denied otherwise. Previously a writable tmpfs at
   `/sys/fs/cgroup` (cgroup v1 or hybrid hosts) was accepted and the runner wrote

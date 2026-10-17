@@ -1,0 +1,183 @@
+{
+  "local_hmac_key_retained_only_on_host": true,
+  "runs": [
+    {
+      "admitted": false,
+      "evidence_schema_valid": true,
+      "evidence_sha256_bound": true,
+      "findings": [
+        {
+          "count": 1,
+          "finding_id": "firecracker_runtime_failure",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 5,
+          "finding_id": "web_blocked_egress_attempt",
+          "severity": "HIGH"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_browser_lifecycle_incomplete",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_browser_sandbox_unknown",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_browser_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_cdp_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_egress_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_navigation_missing",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 5,
+          "finding_id": "web_unauthorized_origin_attempt",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_vm_execution_failed",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_vm_lifecycle_incomplete",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 2,
+          "finding_id": "web_vm_telemetry_loss",
+          "severity": "CRITICAL"
+        }
+      ],
+      "gate_hmac_valid": true,
+      "gate_provenance_pass_at_run": true,
+      "gate_status": "FAIL",
+      "job_id": "mf-web-2cd1473a",
+      "label": "candidate2",
+      "preflight_ready": true,
+      "purge_verified": true,
+      "receipt_decision": "DENY",
+      "receipt_hmac_valid": true,
+      "receipt_schema_valid": true,
+      "reduction_recomputed_equal": true,
+      "rootfs_sha256": "cc6c7a5697b837334bdc032abe257d1ea123b05493d0df62869b55e7a165a6c6",
+      "telemetry_incomplete": true
+    },
+    {
+      "admitted": true,
+      "evidence_schema_valid": true,
+      "evidence_sha256_bound": true,
+      "findings": [
+        {
+          "count": 5,
+          "finding_id": "web_blocked_egress_attempt",
+          "severity": "HIGH"
+        },
+        {
+          "count": 1,
+          "finding_id": "web_egress_telemetry_loss",
+          "severity": "CRITICAL"
+        },
+        {
+          "count": 5,
+          "finding_id": "web_unauthorized_origin_attempt",
+          "severity": "CRITICAL"
+        }
+      ],
+      "gate_hmac_valid": true,
+      "gate_provenance_pass_at_run": true,
+      "gate_status": "FAIL",
+      "job_id": "mf-web-0bf4c540",
+      "label": "candidate3",
+      "preflight_ready": true,
+      "purge_verified": true,
+      "receipt_decision": "DENY",
+      "receipt_hmac_valid": true,
+      "receipt_schema_valid": true,
+      "reduction_recomputed_equal": true,
+      "rootfs_sha256": "b8abf05b0bdd60a0d9abeb882fd2b564d5e6a4d935143de0469acb0fc599eec4",
+      "telemetry_incomplete": true
+    },
+    {
+      "admitted": true,
+      "evidence_schema_valid": true,
+      "evidence_sha256_bound": true,
+      "findings": [
+        {
+          "count": 5,
+          "finding_id": "web_blocked_egress_attempt",
+          "severity": "HIGH"
+        },
+        {
+          "count": 5,
+          "finding_id": "web_unauthorized_origin_attempt",
+          "severity": "CRITICAL"
+        }
+      ],
+      "gate_hmac_valid": true,
+      "gate_provenance_pass_at_run": true,
+      "gate_status": "FAIL",
+      "job_id": "mf-web-a2a77316",
+      "label": "candidate4",
+      "preflight_ready": true,
+      "purge_verified": true,
+      "receipt_decision": "DENY",
+      "receipt_hmac_valid": true,
+      "receipt_schema_valid": true,
+      "reduction_recomputed_equal": true,
+      "rootfs_sha256": "a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c",
+      "telemetry_incomplete": false
+    },
+    {
+      "admitted": true,
+      "evidence_schema_valid": true,
+      "evidence_sha256_bound": true,
+      "findings": [
+        {
+          "count": 5,
+          "finding_id": "web_blocked_egress_attempt",
+          "severity": "HIGH"
+        },
+        {
+          "count": 5,
+          "finding_id": "web_unauthorized_origin_attempt",
+          "severity": "CRITICAL"
+        }
+      ],
+      "gate_hmac_valid": true,
+      "gate_provenance_matches_current_commit": true,
+      "gate_provenance_pass_at_run": true,
+      "gate_status": "FAIL",
+      "job_id": "mf-web-b91adb3e",
+      "label": "committed",
+      "preflight_ready": true,
+      "purge_verified": true,
+      "receipt_decision": "DENY",
+      "receipt_hmac_valid": true,
+      "receipt_schema_valid": true,
+      "reduction_recomputed_equal": true,
+      "rootfs_sha256": "a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c",
+      "source_commit": "801b8037eaac04601a5ca9d8df7cf8f07b729c51",
+      "telemetry_incomplete": false
+    }
+  ],
+  "schema_version": "cindermote.browser-followup-local-verification/v1"
+}

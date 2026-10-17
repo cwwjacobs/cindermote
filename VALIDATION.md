@@ -471,3 +471,48 @@ and `git diff --check` also passed. The job-image contract now runs
 unprivileged, so CI no longer deselects it; CI still repeats that contract as
 root. The exact suite and coverage output is retained in
 `.cindermote/audit/2026-10-16/`.
+
+## 2026-10-16 — controlled HTTPS browser follow-up
+
+The host remained on Void `6.18.57_1` with swap disabled. The root browser
+preflight passed all 24 required checks before each controlled-fixture gate
+attempt. Two temporary public HTTPS origins served a locally controlled
+fixture, and the gate checked that both returned the expected source hash.
+The fixture token, observer HMAC key, and raw Chromium diagnostic log stayed
+local.
+
+Four retained signed failure attempts show progress without a fabricated
+pass. Candidate 2 failed guest navigation with the bounded code
+`navigation_err_network_changed`. Candidate 3 loaded the page inside a jailed
+Firecracker VM with Chromium's sandbox active, but one allowed fixture proxy
+tunnel remained incomplete when the proxy stopped. Candidate 4 added a bounded
+teardown drain: the browser, CDP, egress, and VM streams were all complete;
+rootfs read-only, guest tmpfs writes, and externally verified purge were
+recorded. Five background Chromium requests to unauthorized Google origins
+were blocked. The signed receipt is therefore `DENY`, and the clean-case gate
+result is `FAIL`. The remaining four fixture cases were not run.
+The fourth attempt repeated this result against exact source commit
+`801b8037eaac04601a5ca9d8df7cf8f07b729c51`; its gate provenance
+check passed and its signed receipt again reported complete telemetry,
+verified purge, and `DENY` for five blocked background attempts.
+
+The candidate-4 rootfs and build receipt hashes are
+`a83985565010ce930f10241bac06c0e550ca9b13b3a59dd9f52ef93214d19b7c`
+and `75e713f326a1384efd29ab4bb5f3cdf0d63261f2cb3420eaed688e37541c234b`.
+A second build from the same pinned inputs and local Docker cache reproduced
+both hashes. Local verification checked all four gate/receipt HMACs, schemas,
+evidence-file SHA-256 bindings, and reductions. The public bundle carries
+selected byte-for-byte copies and its own SHA-256 index; the observer key is
+not published, so external authentication is not claimed.
+
+Final portable suite after these guest and receipt changes:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -B -m pytest -p no:cacheprovider -q tests
+461 passed, 3 skipped, 196 subtests passed in 105.96s
+```
+
+Ruff, `dash -n guest/cindermote-init`, `python3 cli.py kernel-laws`, and
+`git diff --check` passed. The detailed result and remaining Chromium startup
+blocker are in [the browser audit](docs/audits/2026-10-16-browser-followup.md)
+and [public proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md).

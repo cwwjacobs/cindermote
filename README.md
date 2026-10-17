@@ -57,7 +57,7 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
 | Declared registries (seams, capabilities, cues, components) | Checked against the tree by `cindermote kernel-laws` | `tests/test_kernel_laws.py` |
 | Host-native MCP execution (init, `tools/list`, `tools/call`, vertical run) | **Disabled in this baseline**; calls raise `HostNativeExecutionDisabled` | `tests/test_vertical_spine.py` 01–05 |
 | Supported-host KVM agent-probe | On Void `6.18.57_1`, root preflight passed all 24 checks and one jailed run completed with guest, egress, and cleanup witnesses verified. The invalid provider key kept the gate incomplete. | [Validation record](VALIDATION.md), [audit](docs/audits/2026-10-16-security-audit.md), [published evidence](docs/audits/evidence/2026-10-16/README.md) |
-| Browser-profile KVM | A public-site smoke admitted a jailed VM and verified purge, then returned `DENY` with incomplete telemetry. The controlled-fixture gate remains unrun. | [Audit](docs/audits/2026-10-16-security-audit.md), [published evidence](docs/audits/evidence/2026-10-16/README.md) |
+| Browser-profile KVM | A controlled HTTPS page loaded in a jailed Firecracker VM with Chromium's sandbox active, all four evidence streams complete, and purge verified. The five-case gate still fails at its clean case: Chromium made five blocked background requests to unauthorized Google origins, so the signed decision is `DENY`, not `ALLOW`. | [Browser follow-up](docs/audits/2026-10-16-browser-followup.md), [proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md) |
 | Live-provider agent `ALLOW` | **Not demonstrated** | The supported-host run intentionally used an invalid provider key. |
 | Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated; snapshot startup was repaired and six hostile probes completed with `DENY`, signed receipts, and verified cleanup on the audited host. Incomplete observation fails closed; root runs require real cgroup v2. | [Regression tests](tests/test_incident_gate.py), [audit](docs/audits/2026-10-16-security-audit.md), [deprecation](docs/legacy-deprecation.md) |
 
@@ -114,6 +114,14 @@ portable test summary. The encrypted guest evidence and the host-specific
 archive remain local; public HMAC receipts cannot be independently
 authenticated without the host's private observer key.
 
+The [browser follow-up](docs/audits/2026-10-16-browser-followup.md) retained
+four successive signed failure receipts, including one bound to the exact
+source commit. The final run demonstrates real
+navigation and complete browser, CDP, egress, and VM observation, but the
+controlled-fixture gate remains `FAIL`: blocked Chromium startup requests
+produce an honest `DENY`. The [follow-up proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md)
+includes the receipts, evidence, gate results, build receipt, and hashes.
+
 Follow the [regression tests](tests/test_incident_gate.py),
 [runner failure tests](tests/test_agent_probe_runner.py),
 [mount-proof tests](tests/firecracker/test_firecracker_runtime.py),
@@ -131,8 +139,11 @@ claim boundary.
   contains receipts and hashes, while the private HMAC key and encrypted guest
   evidence stay on that host. A later main commit or release is not itself a
   fresh supported-host run.
-- **Browser-profile KVM E2E is unverified.** It needs an operator-controlled
-  public HTTPS fixture with a DNS-named certificate.
+- **Browser-profile gate is failing.** The clean controlled-fixture case loaded
+  in Firecracker with complete observation and verified cleanup, but Chromium
+  attempted five unauthorized background requests. The proxy blocked them and
+  the signed gate decision was `DENY`; the remaining four fixture cases were
+  not run by that gate. This is not a five-case pass.
 - **Live-provider ALLOW is unverified.** No live credential was used in the
   recorded supported-host run. A successful ALLOW outcome is not guaranteed
   by supplying a credential; it must be executed and verified.
@@ -187,6 +198,35 @@ python3 tests/test_vertical_spine.py
 ./scripts/package-release.sh
 ```
 
+### Starting and viewing runs
+
+There is currently a command-line interface and retained receipts, but no
+browser dashboard, account-based run list, or button to create a run. Each
+invocation below starts a fresh job with its own ID. Firecracker jobs require
+the [prepared host](RUNBOOK.md) and root privileges.
+
+```bash
+# Start a new passive browser run and print its signed receipt.
+sudo ./.venv/bin/python -B mote/detonate.py --browser-url https://example.org/
+
+# Inspect a browser run by the job ID in that receipt.
+job_id=mf-web-REPLACE_WITH_ID
+sudo ./.venv/bin/python -B -m json.tool "receipts/${job_id}.json"
+sudo ./.venv/bin/python -B -m json.tool "receipts/${job_id}.browser-evidence.json"
+
+# Or create an unprivileged legacy demonstration run with a Markdown report.
+./bin/cindermote incident-gate run
+```
+
+Browser receipts live in `receipts/mf-web-*.json`; their evidence sidecars have
+the same job ID. Check `gate.final_decision`, `browser_probe.findings`,
+`telemetry_incomplete`, and `purge.verified_externally` together. A completed
+command does not by itself mean `ALLOW`. Legacy Incident Gate reports live in
+`receipts/incident-gate/run-*/`; agent-probe's receipt and road files live in
+`receipts/agent-probe/` as described in its [runbook](docs/agent-probe/RUNBOOK.md).
+These folders are local and intentionally ignored by Git; the audit bundles
+publish selected copies only.
+
 `python3 -m unittest discover -s tests` does not find
 `tests/firecracker/` (no `__init__.py`) or pytest-style test functions. Use
 pytest for the full suite.
@@ -201,6 +241,8 @@ Recorded results and the commits they cover are in [VALIDATION.md](VALIDATION.md
 - `VALIDATION.md` — Recorded verification runs and status.
 - `docs/audits/2026-10-16-security-audit.md` — Latest defensive audit,
   remediations, retained failures, and exact Firecracker proof boundaries.
+- `docs/audits/2026-10-16-browser-followup.md` — Controlled-fixture browser
+  follow-up, remaining failed gate, and reproduced image hashes.
 - `docs/audits/evidence/2026-10-16/README.md` — Public proof bundle,
   checksums, and limits of third-party verification.
 - `CHANGELOG.md` — What changed, including removals and behavior changes.

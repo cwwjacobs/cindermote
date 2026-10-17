@@ -1,8 +1,23 @@
-.git
-.cindermote
-__pycache__
-*.pyc
-alerts
-quarantine
-receipts
-policy/golden-snapshot.tar.gz
+# The Docker daemon receives the whole build context before COPY runs. Keep
+# local observer keys, receipts, credentials, virtualenvs, and audit state out
+# of that context by allowing only the pinned image inputs below.
+**
+!images/
+!images/firecracker/
+!images/firecracker/Containerfile
+!images/firecracker/RootfsToolchain.Containerfile
+!scripts/
+!scripts/build-rootfs-in-toolchain.sh
+!guest/
+!guest/browser_agent.py
+!guest/agent_probe_agent.py
+!guest/cindermote-init
+!mote/
+!mote/browser_contract.py
+!agent_probe/
+!agent_probe/__init__.py
+!agent_probe/canonical.py
+!agent_probe/evidence.py
+!agent_probe/hpke.py
+!agent_probe/protocol.py
+!agent_probe/secretstream.py
