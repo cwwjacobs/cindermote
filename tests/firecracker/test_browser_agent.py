@@ -102,6 +102,15 @@ def _csp_issue(**overrides: Any) -> dict[str, Any]:
 
 
 class NativeWebSocketBoundaryTests(unittest.TestCase):
+    def test_http2_empty_status_phrase_is_omitted_from_header_override(self) -> None:
+        cdp, websocket, _ = _cdp()
+        event = _response()
+        event["params"]["responseStatusText"] = ""
+        cdp.handle_event(event)
+        self.assertEqual(websocket.sent[-1]["method"], "Fetch.continueResponse")
+        self.assertEqual(websocket.sent[-1]["params"]["responseCode"], 200)
+        self.assertNotIn("responsePhrase", websocket.sent[-1]["params"])
+
     def test_native_audits_and_document_response_interception_are_installed_before_navigation(self) -> None:
         commands = [method for method, _ in CDP_SETUP_COMMANDS]
         self.assertLess(commands.index("Audits.enable"), commands.index("Fetch.enable"))

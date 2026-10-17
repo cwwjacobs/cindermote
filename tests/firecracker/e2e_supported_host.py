@@ -57,6 +57,7 @@ from cindermote.observer.receipt import (  # noqa: E402
 
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+FIXTURE_INSTANCE_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 CASES = (
     ("clean", "/case/clean", None),
     ("post", "/case/post", "web_active_interaction_attempt"),
@@ -417,6 +418,40 @@ def _local_control_origin(origin: str | None, ca_file: Path | None) -> str | Non
     return f"https://127.0.0.1:{parsed.port or 443}"
 
 
+def _verify_fixture_identity(
+    primary: str,
+    secondary: str,
+    source_sha256: str,
+    token: str,
+    local_control: str | None,
+    ca_file: Path | None,
+) -> dict[str, Any]:
+    # In private-control mode establish the server lifetime through the
+    # authenticated loopback channel before making any public identity call.
+    if local_control is not None:
+        initial = _fixture_json(local_control, "/control/info", token, ca_file=ca_file)
+        public_origins = (primary, secondary)
+    else:
+        initial = _fixture_json(primary, "/fixture-info", None)
+        public_origins = (secondary,)
+    instance_id = initial.get("instance_id")
+    if not isinstance(instance_id, str) or FIXTURE_INSTANCE_PATTERN.fullmatch(instance_id) is None:
+        raise RuntimeError("controlled HTTPS fixture instance identity is malformed")
+    expected = {
+        "schema_version": "cindermote.e2e-fixture/v1",
+        "primary_origin": primary,
+        "unauthorized_origin": secondary,
+        "fixture_source_sha256": source_sha256,
+        "instance_id": instance_id,
+    }
+    if initial != expected:
+        raise RuntimeError("controlled HTTPS fixture identity check failed")
+    for fixture_origin in public_origins:
+        if _fixture_json(fixture_origin, "/fixture-info", None) != expected:
+            raise RuntimeError("public and control fixture instance identities differ")
+    return expected
+
+
 def _write_private_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -654,23 +689,26 @@ def run_gate(
         summary["preflight"] = preflight.to_dict()
         if not preflight.ready:
             raise RuntimeError("Firecracker supported-host preflight is not ready")
-        expected_info = {
-            "schema_version": "cindermote.e2e-fixture/v1",
-            "primary_origin": primary,
-            "unauthorized_origin": secondary,
-            "fixture_source_sha256": {
+        fixture_identity = _verify_fixture_identity(
+            primary, secondary, {
                 item["path"]: item["sha256"] for item in provenance_start["fixture_sources"]
             }[FIXTURE_SOURCE_PATHS[0]],
-        }
+            token, local_control, control_ca_file,
+        )
         for fixture_origin in (primary, secondary):
-            if _fixture_json(fixture_origin, "/fixture-info", None) != expected_info:
-                raise RuntimeError("controlled HTTPS fixture identity check failed")
             if _fixture_json(
                 local_control or fixture_origin, "/control/reset", token,
                 method="POST", ca_file=control_ca_file,
             ) != {"reset": True}:
                 raise RuntimeError("controlled HTTPS fixture reset failed")
         summary["fixture"]["source_hash_verified_by_both_origins"] = True
+        summary["fixture"]["instance_id"] = fixture_identity["instance_id"]
+        summary["fixture"]["counter_scope"] = {
+            "model": "shared-fixture-instance",
+            "instance_id": fixture_identity["instance_id"],
+            "control_endpoints": [local_control] if local_control else [primary, secondary],
+            "origin_labels_are_independent": False,
+        }
 
         for case_name, path, expected_finding in CASES:
             current_attempt = {"case": case_name}
@@ -695,6 +733,7 @@ def run_gate(
 
         expected_fixture = {
             "schema_version": "cindermote.e2e-fixture/v1",
+            "instance_id": fixture_identity["instance_id"],
             "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
         }
         fixture_counts: dict[str, dict[str, int]] = {}
@@ -702,6 +741,8 @@ def run_gate(
             fixture = _fixture_json(
                 local_control or fixture_origin, "/control/counts", token, ca_file=control_ca_file,
             )
+            if fixture.get("instance_id") != fixture_identity["instance_id"]:
+                raise AssertionError("controlled fixture instance changed before counter verification")
             if fixture != expected_fixture:
                 raise AssertionError("a forbidden browser action reached the controlled fixture")
             fixture_counts[label] = fixture["counts"]
@@ -782,6 +823,17 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
     primary = fixture.get("primary_origin")
     if not isinstance(primary, str):
         raise AssertionError("competition gate primary origin is missing")
+    instance_id = fixture.get("instance_id")
+    scope = fixture.get("counter_scope")
+    if (
+        not isinstance(instance_id, str)
+        or FIXTURE_INSTANCE_PATTERN.fullmatch(instance_id) is None
+        or not isinstance(scope, dict)
+        or scope.get("model") != "shared-fixture-instance"
+        or scope.get("instance_id") != instance_id
+        or scope.get("origin_labels_are_independent") is not False
+    ):
+        raise AssertionError("competition gate shared fixture instance is missing")
     cases = summary.get("cases")
     if not isinstance(cases, list) or len(cases) != len(CASES):
         raise AssertionError("competition gate case set is incomplete")

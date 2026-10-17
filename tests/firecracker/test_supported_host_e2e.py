@@ -273,7 +273,7 @@ class GateReceiptBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "budgets differ"):
             gate._verify_probe_receipt(self.receipt, self.request, None)
 
-    def _run_gate_with_cases(self, cases: tuple) -> dict:
+    def _run_gate_with_cases(self, cases: tuple, *, counter_instance: str = "c" * 32) -> dict:
         fixture_hash = "a" * 64
         provenance = {
             "fixture_sources": [{"path": gate.FIXTURE_SOURCE_PATHS[0], "sha256": fixture_hash}],
@@ -289,10 +289,19 @@ class GateReceiptBindingTests(unittest.TestCase):
             "primary_origin": "https://example.org",
             "unauthorized_origin": "https://secondary.example.org",
             "fixture_source_sha256": fixture_hash,
+            "instance_id": "c" * 32,
         }
 
         def fixture_json(_origin: str, path: str, _token: str, **_options: object) -> dict:
-            return fixture_info if path == "/fixture-info" else {"reset": True}
+            if path in {"/fixture-info", "/control/info"}:
+                return fixture_info
+            if path == "/control/counts":
+                return {
+                    "schema_version": "cindermote.e2e-fixture/v1",
+                    "instance_id": counter_instance,
+                    "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
+                }
+            return {"reset": True}
 
         output = self.root / "gate.json"
         with (
@@ -344,6 +353,13 @@ class GateReceiptBindingTests(unittest.TestCase):
         receipt_path = self.root / f"{failed['job_id']}.json"
         self.assertEqual(failed["receipt_sha256"], hashlib.sha256(receipt_path.read_bytes()).hexdigest())
         self.assertEqual(failed["evidence_sha256"], self.receipt["browser_probe"]["evidence"]["sha256"])
+
+    def test_restarted_fixture_cannot_supply_fresh_zero_counters(self) -> None:
+        result = self._run_gate_with_cases((), counter_instance="d" * 32)
+        self.assertIn("fixture instance changed", result["failure"])
+        self.assertEqual(result["fixture"]["instance_id"], "c" * 32)
+        self.assertEqual(result["fixture"]["counter_scope"]["model"], "shared-fixture-instance")
+        self.assertFalse(result["fixture"]["counter_scope"]["origin_labels_are_independent"])
 
 
 @unittest.skipUnless(

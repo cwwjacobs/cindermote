@@ -722,7 +722,10 @@ class CDP:
                 "responseCode": status,
                 "responseHeaders": bounded_headers,
             }
-            if phrase is not None:
+            # HTTP/2 has no reason phrase; Chromium reports an empty string.
+            # Passing that explicitly makes continueResponse reject the status.
+            # Omitting it lets Chromium use its normal status phrase.
+            if phrase:
                 arguments["responsePhrase"] = phrase
             self.command("Fetch.continueResponse", arguments)
         except (AgentError, BrowserContractError, UnicodeError) as exc:

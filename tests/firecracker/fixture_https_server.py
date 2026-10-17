@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import signal
 import ssl
 import stat
@@ -76,6 +77,9 @@ class FixtureState:
         self.primary_origin = primary_origin
         self.unauthorized_origin = unauthorized_origin
         self.source_sha256 = source_sha256
+        # Public correlation nonce, not an authentication secret. Both public
+        # origins and private controls must refer to this same server lifetime.
+        self.instance_id = secrets.token_hex(16)
         self._counts = {name: 0 for name in COUNTER_KEYS}
         self._lock = threading.Lock()
 
@@ -157,6 +161,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                     "primary_origin": self.server.state.primary_origin,
                     "unauthorized_origin": self.server.state.unauthorized_origin,
                     "fixture_source_sha256": self.server.state.source_sha256,
+                    "instance_id": self.server.state.instance_id,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -168,7 +173,11 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 self._reject(HTTPStatus.FORBIDDEN)
                 return
             payload = json.dumps(
-                {"schema_version": "cindermote.e2e-fixture/v1", "counts": self.server.state.snapshot()},
+                {
+                    "schema_version": "cindermote.e2e-fixture/v1",
+                    "instance_id": self.server.state.instance_id,
+                    "counts": self.server.state.snapshot(),
+                },
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("ascii")
