@@ -26,6 +26,8 @@ if str(PROJECT_DIR) not in sys.path:
 from cindermote.mote.browser_contract import (  # noqa: E402
     make_probe_request,
     normalize_origin,
+    origin_for_url,
+    validate_probe_request,
 )
 from cindermote.mote.browser_evidence import (  # noqa: E402
     TELEMETRY_INCOMPLETE_FINDINGS,
@@ -443,12 +445,68 @@ def _verify_probe_receipt(
     receipt: dict,
     request: dict[str, Any],
     expected_finding: str | None,
+    *,
+    attempt_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    request = validate_probe_request(request)
     validate_receipt(receipt)
     key = Path(OBSERVER_KEY_PATH).read_bytes()
     if len(key) != 32 or not verify_signature(receipt, key):
         raise AssertionError("browser receipt signature did not verify")
     browser = receipt["browser_probe"]
+    job_id = receipt["identity"]["job_id"]
+    if attempt_record is not None:
+        attempt_record.update({
+            "job_id": job_id,
+            "receipt_signature_verified": True,
+            "returned_receipt_canonical_sha256": hashlib.sha256(
+                _canonical_json(receipt)
+            ).hexdigest(),
+        })
+    # Receipt validation checks its internal commitments. The gate must also
+    # bind those commitments to this exact case, including the URL path.
+    request_sha256 = hashlib.sha256(json.dumps(
+        request,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    expected_input = {
+        "contract_version": request["contract_version"],
+        "url_sha256": hashlib.sha256(request["url"].encode("utf-8")).hexdigest(),
+        "normalized_origin": origin_for_url(request["url"]),
+        "authorized_origins": request["authorized_origins"],
+        "request_sha256": request_sha256,
+        "navigation_mode": request["navigation"]["mode"],
+    }
+    if any(browser["input"].get(name) != value for name, value in expected_input.items()):
+        raise AssertionError("browser receipt is not bound to the exact fixture request")
+    if any(
+        receipt["budgets_granted"].get(name) != value
+        for name, value in request["budgets"].items()
+    ):
+        raise AssertionError("browser receipt budgets differ from the fixture request")
+
+    receipt_path = RECEIPTS_DIR / f"{job_id}.json"
+    persisted = _strict_json_file(receipt_path, 8 * 1024 * 1024)
+    if persisted != receipt or not verify_signature(persisted, key):
+        raise AssertionError("persisted browser receipt differs or has an invalid signature")
+    evidence_path = RECEIPTS_DIR / f"{job_id}.browser-evidence.json"
+    persisted_evidence = validate_browser_evidence(
+        _strict_json_file(evidence_path, 32 * 1024 * 1024)
+    )
+    if sha256_file(evidence_path) != browser["evidence"]["sha256"]:
+        raise AssertionError("persisted browser evidence differs from its signed commitment")
+    if reduce_browser_evidence(persisted_evidence, request) != browser["reduction"]:
+        raise AssertionError("persisted evidence does not reproduce the signed reduction")
+    if attempt_record is not None:
+        attempt_record.update({
+            "receipt_sha256": sha256_file(receipt_path),
+            "evidence_sha256": browser["evidence"]["sha256"],
+            "decision": receipt["gate"]["final_decision"],
+            "receipt_artifacts_verified": True,
+        })
     findings = {item["finding_id"] for item in browser["findings"]}
     reduction = browser["reduction"]
     if (
@@ -477,20 +535,7 @@ def _verify_probe_receipt(
         value for name, value in purge.items() if name != "verified_externally"
     ):
         raise AssertionError("browser case did not prove complete teardown")
-    job_id = receipt["identity"]["job_id"]
     _assert_clean_teardown(job_id)
-    receipt_path = RECEIPTS_DIR / f"{job_id}.json"
-    persisted = _strict_json_file(receipt_path, 8 * 1024 * 1024)
-    if persisted != receipt or not verify_signature(persisted, key):
-        raise AssertionError("persisted browser receipt differs or has an invalid signature")
-    evidence_path = RECEIPTS_DIR / f"{job_id}.browser-evidence.json"
-    if sha256_file(evidence_path) != browser["evidence"]["sha256"]:
-        raise AssertionError("persisted browser evidence differs from its signed commitment")
-    persisted_evidence = validate_browser_evidence(
-        _strict_json_file(evidence_path, 32 * 1024 * 1024)
-    )
-    if reduce_browser_evidence(persisted_evidence, request) != browser["reduction"]:
-        raise AssertionError("persisted evidence does not reproduce the signed reduction")
     return {
         "job_id": job_id,
         "decision": expected_decision,
@@ -504,6 +549,12 @@ def _verify_probe_receipt(
         "browser_sha256": browser["runtime"]["browser_sha256"],
         "purge": purge,
     }
+
+
+def _claim_case_job(job_id: str, seen_job_ids: set[str]) -> None:
+    if job_id in seen_job_ids:
+        raise AssertionError("competition gate reused a browser job across fixture cases")
+    seen_job_ids.add(job_id)
 
 
 def run_gate(
@@ -533,6 +584,8 @@ def run_gate(
     token = _read_private_token(token_file)
     observer_key = load_or_create_key(OBSERVER_KEY_PATH)
     provenance_start: dict[str, Any] | None = None
+    current_attempt: dict[str, Any] | None = None
+    seen_job_ids: set[str] = set()
     summary: dict[str, Any] = {
         "schema_version": "cindermote.firecracker-e2e-gate/v2",
         "status": "RUNNING",
@@ -581,9 +634,13 @@ def run_gate(
         summary["fixture"]["source_hash_verified_by_both_origins"] = True
 
         for case_name, path, expected_finding in CASES:
+            current_attempt = {"case": case_name}
             request = case_request(primary, path)
             receipt = detonate_browser_probe(request, submitted_by="competition-e2e")
-            case_receipt = _verify_probe_receipt(receipt, request, expected_finding)
+            case_receipt = _verify_probe_receipt(
+                receipt, request, expected_finding, attempt_record=current_attempt
+            )
+            _claim_case_job(case_receipt["job_id"], seen_job_ids)
             if (
                 case_receipt["rootfs_sha256"]
                 != provenance_start["browser_rootfs"]["sha256"]
@@ -595,6 +652,7 @@ def run_gate(
                 )
             case_receipt["case"] = case_name
             summary["cases"].append(case_receipt)
+            current_attempt = None
 
         expected_fixture = {
             "schema_version": "cindermote.e2e-fixture/v1",
@@ -619,6 +677,8 @@ def run_gate(
         summary["status"] = "FAIL"
         summary["failure_type"] = type(exc).__name__
         summary["failure"] = str(exc)[:512]
+        if current_attempt is not None:
+            summary["failed_case"] = current_attempt
         raise
     finally:
         provenance_failure: AssertionError | None = None
@@ -684,12 +744,14 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
     cases = summary.get("cases")
     if not isinstance(cases, list) or len(cases) != len(CASES):
         raise AssertionError("competition gate case set is incomplete")
+    seen_job_ids: set[str] = set()
     for recorded, (case_name, path, expected_finding) in zip(cases, CASES):
         if not isinstance(recorded, dict) or recorded.get("case") != case_name:
             raise AssertionError("competition gate case order or identity changed")
         job_id = recorded.get("job_id")
         if not isinstance(job_id, str):
             raise AssertionError("competition gate case job identity is missing")
+        _claim_case_job(job_id, seen_job_ids)
         persisted = _strict_json_file(RECEIPTS_DIR / f"{job_id}.json", 8 * 1024 * 1024)
         observed = _verify_probe_receipt(
             persisted,

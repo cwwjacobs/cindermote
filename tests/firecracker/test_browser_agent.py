@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import copy
+import signal
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock, patch
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -25,6 +28,7 @@ from guest.browser_agent import (  # noqa: E402
     Evidence,
     ProbeFailure,
     _failure_code,
+    _stop_browser,
 )
 from mote.browser_contract import make_probe_request  # noqa: E402
 
@@ -63,6 +67,35 @@ def _paused(resource_type: Any = "Document", method: str = "GET") -> dict[str, A
     if resource_type is not None:
         params["resourceType"] = resource_type
     return {"method": "Fetch.requestPaused", "params": params}
+
+
+class BrowserTerminationBoundaryTests(unittest.TestCase):
+    def test_interception_stays_attached_until_confirmed_termination(self) -> None:
+        events = []
+        process = Mock(pid=12345)
+        websocket = Mock()
+        process.wait.side_effect = lambda **_kwargs: events.append("exited")
+        websocket.close.side_effect = lambda: events.append("detached")
+        with patch("guest.browser_agent.os.killpg", side_effect=lambda *_args: events.append("killed")) as kill:
+            _stop_browser(process, websocket)
+        kill.assert_called_once_with(12345, signal.SIGKILL)
+        self.assertEqual(events, ["killed", "exited", "detached"])
+
+    def test_unconfirmed_termination_is_an_error(self) -> None:
+        process = Mock(pid=12345)
+        process.wait.side_effect = subprocess.TimeoutExpired("chromium", 1)
+        websocket = Mock()
+        with patch("guest.browser_agent.os.killpg"), self.assertRaisesRegex(AgentError, "not confirmed"):
+            _stop_browser(process, websocket)
+        websocket.close.assert_called_once()
+
+    def test_already_exited_browser_still_reaps_and_closes(self) -> None:
+        process = Mock(pid=12345)
+        websocket = Mock()
+        with patch("guest.browser_agent.os.killpg", side_effect=ProcessLookupError):
+            _stop_browser(process, websocket)
+        process.wait.assert_called_once_with(timeout=1)
+        websocket.close.assert_called_once()
 
 
 class PassiveResourceBoundaryTests(unittest.TestCase):

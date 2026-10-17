@@ -50,6 +50,7 @@ printf '%s\n' \
   /usr/bin/mount \
   /usr/bin/mkdir \
   /usr/bin/ip \
+  /usr/lib/chromium/chromium-headless-shell \
   >"${WORK_DIR}/required-executables"
 while IFS= read -r executable; do
   debugfs -R "stat ${executable}" "$ROOTFS" >"${WORK_DIR}/executable.stat" 2>/dev/null
@@ -77,7 +78,7 @@ grep -Eq '\bUser:[[:space:]]+0[[:space:]]+Group:[[:space:]]+0\b' \
   "${WORK_DIR}/chrome-sandbox.stat"
 
 e2fsck -fn "$ROOTFS" >/dev/null
-debugfs -R "dump /usr/lib/chromium/chromium ${WORK_DIR}/chromium.rootfs" "$ROOTFS" >/dev/null
+debugfs -R "dump /usr/lib/chromium/chromium-headless-shell ${WORK_DIR}/chromium.rootfs" "$ROOTFS" >/dev/null
 debugfs -R "dump /opt/cindermote/browser_agent.py ${WORK_DIR}/browser_agent.rootfs.py" "$ROOTFS" >/dev/null
 debugfs -R "dump /opt/cindermote/agent_probe_agent.py ${WORK_DIR}/agent_probe_agent.rootfs.py" "$ROOTFS" >/dev/null
 debugfs -R "dump /opt/cindermote/agent_probe/__init__.py ${WORK_DIR}/agent_probe_init.rootfs.py" "$ROOTFS" >/dev/null

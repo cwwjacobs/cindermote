@@ -688,6 +688,24 @@ def _sandbox_active(browser_pid: int) -> bool:
     return bool(renderers) and all(renderers)
 
 
+def _stop_browser(process: subprocess.Popen[bytes], websocket: WebSocket | None) -> None:
+    # Detaching DevTools can resume paused Fetch requests. Keep interception
+    # attached until the browser has exited; inability to confirm exit fails
+    # the probe rather than claiming complete observation.
+    try:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired as exc:
+            raise AgentError("Chromium termination was not confirmed") from exc
+    finally:
+        if websocket is not None:
+            websocket.close()
+
+
 _PAGE_ATTESTATION = r"""
 (() => {
   const marker = /(ignore\s+(all|any|the|previous)|system\s+message|developer\s+message|assistant\s+instruction|tool\s+call|jailbreak|override\s+policy)/i;
@@ -756,7 +774,10 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
     evidence.add("browser", "lifecycle", "started")
     _set_probe_stage("chromium_start")
     command = [
-        "/usr/bin/chromium",
+        # The dedicated shell omits desktop profile services (for example
+        # ListAccounts) which ignore disable-background-networking. The host
+        # still observes every proxy attempt; none are exempted as startup.
+        "/usr/bin/chromium-headless-shell",
         "--headless",
         f"--user-data-dir={profile}",
         "--remote-debugging-address=127.0.0.1",
@@ -826,6 +847,10 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         cdp.pump_until_loaded(navigation_frame, navigation_loader, deadline)
         if cdp.main_frame_id != navigation_frame:
             raise AgentError("committed main frame differs from the target navigation")
+        # Observation ends at this load-event snapshot. Freeze page execution
+        # while collecting metadata so timers cannot race the final CDP read
+        # and teardown; Fetch interception remains attached until termination.
+        cdp.command("Page.setWebLifecycleState", {"state": "frozen"})
         _set_probe_stage("attestation")
         isolated_world = cdp.command(
             "Page.createIsolatedWorld",
@@ -914,22 +939,17 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         raise
     finally:
         try:
-            if websocket is not None:
-                websocket.close()
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                pass
+            _stop_browser(process, websocket)
             # Give the proxy a bounded chance to observe the browser's TCP
             # close before the host revokes egress. A still-open tunnel remains
             # incomplete and must fail closed in the host evidence reducer.
             time.sleep(0.5)
         except BaseException:
             _set_probe_stage("teardown")
+            evidence.add("browser", "lifecycle", "failed")
+            evidence.add("cdp", "telemetry_loss", "observed")
+            evidence.complete["browser"] = False
+            evidence.complete["cdp"] = False
             raise
 
 
