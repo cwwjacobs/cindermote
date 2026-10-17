@@ -26,6 +26,8 @@ from guest.browser_agent import (  # noqa: E402
     CDP_SETUP_COMMANDS,
     AgentError,
     Evidence,
+    MAX_RESPONSE_HEADER_BYTES,
+    MAX_RESPONSE_HEADERS,
     ProbeFailure,
     _failure_code,
     _stop_browser,
@@ -67,6 +69,198 @@ def _paused(resource_type: Any = "Document", method: str = "GET") -> dict[str, A
     if resource_type is not None:
         params["resourceType"] = resource_type
     return {"method": "Fetch.requestPaused", "params": params}
+
+
+def _response() -> dict[str, Any]:
+    event = _paused()
+    event["params"].update({
+        "responseStatusCode": 200,
+        "responseStatusText": "OK",
+        "responseHeaders": [
+            {"name": "content-type", "value": "text/html; charset=utf-8"},
+            {"name": "content-length", "value": "42"},
+        ],
+    })
+    return event
+
+
+def _csp_issue(**overrides: Any) -> dict[str, Any]:
+    violation = {
+        "blockedURL": "wss://example.com/private-path?private-query=1",
+        "violatedDirective": "connect-src",
+        "isReportOnly": False,
+        "contentSecurityPolicyViolationType": "kURLViolation",
+    }
+    violation.update(overrides)
+    return {
+        "method": "Audits.issueAdded",
+        "params": {"issue": {
+            "code": "ContentSecurityPolicyIssue",
+            "details": {"contentSecurityPolicyIssueDetails": violation},
+        }},
+    }
+
+
+class NativeWebSocketBoundaryTests(unittest.TestCase):
+    def test_native_audits_and_document_response_interception_are_installed_before_navigation(self) -> None:
+        commands = [method for method, _ in CDP_SETUP_COMMANDS]
+        self.assertLess(commands.index("Audits.enable"), commands.index("Fetch.enable"))
+        fetch = dict(CDP_SETUP_COMMANDS)["Fetch.enable"]
+        self.assertIn(
+            {"urlPattern": "*", "resourceType": "Document", "requestStage": "Response"},
+            fetch["patterns"],
+        )
+        self.assertNotIn("Page.navigate", commands)
+
+    def test_document_csp_is_added_without_replacing_original_headers_status_or_body(self) -> None:
+        cdp, websocket, evidence = _cdp()
+        event = _response()
+        event["params"].update({"responseStatusCode": 302, "responseStatusText": "Found"})
+        original_csp = {"name": "Content-Security-Policy", "value": "script-src 'self'; connect-src 'none'"}
+        event["params"]["responseHeaders"].extend([
+            original_csp,
+            {"name": "set-cookie", "value": "private-cookie=private-value; Secure"},
+            {"name": "location", "value": "https://example.com/next"},
+        ])
+        original_headers = copy.deepcopy(event["params"]["responseHeaders"])
+        cdp.handle_event(event)
+        sent = websocket.sent[-1]
+        self.assertEqual(sent["method"], "Fetch.continueResponse")
+        self.assertEqual(sent["params"]["responseCode"], 302)
+        self.assertEqual(sent["params"]["responsePhrase"], "Found")
+        self.assertEqual(sent["params"]["responseHeaders"][:-1], original_headers)
+        self.assertEqual(sent["params"]["responseHeaders"][-1], {
+            "name": "Content-Security-Policy", "value": "connect-src https://example.com",
+        })
+        self.assertNotIn("body", sent["params"])
+        self.assertEqual(event["params"]["responseHeaders"], original_headers)
+        self.assertEqual(evidence.events, [])
+
+    def test_csp_uses_all_exact_authorized_origins_and_keeps_passive_https_fetch_possible(self) -> None:
+        websocket = _FakeWebSocket()
+        evidence = Evidence(max_events=100)
+        request = make_probe_request(
+            "https://example.com/",
+            authorized_origins=["https://example.com", "https://assets.example.org:8443"],
+        )
+        cdp = CDP(websocket, evidence, request)
+        cdp.handle_event(_response())
+        policy = websocket.sent[-1]["params"]["responseHeaders"][-1]["value"]
+        self.assertEqual(policy, "connect-src https://assets.example.org:8443 https://example.com")
+        for forbidden in ("'self'", "ws:", "wss:", "*"):
+            self.assertNotIn(forbidden, policy)
+        cdp.handle_event(_paused("Fetch", "GET"))
+        self.assertEqual(websocket.sent[-1]["method"], "Fetch.continueRequest")
+        self.assertFalse(any(event["kind"] == "active_interaction" for event in evidence.events))
+
+    def test_malformed_response_is_aborted_and_never_continued(self) -> None:
+        malformed = [
+            {"responseStatusCode": True},
+            {"responseStatusCode": "200"},
+            {"responseStatusCode": 99},
+            {"responseStatusCode": 600},
+            {"responseStatusText": "OK\r\nprivate"},
+            {"responseStatusText": 42},
+            {"responseHeaders": None},
+            {"responseHeaders": [{"name": "bad\r\nname", "value": "x"}]},
+            {"responseHeaders": [{"name": "x", "value": "bad\r\nvalue"}]},
+            {"responseHeaders": [{"name": "x", "value": 1}]},
+            {"responseHeaders": [{"name": "x", "value": "\ud800"}]},
+            {"responseHeaders": [{"name": "x", "value": "x" * 16385}]},
+            {"responseHeaders": [{"name": "x", "value": "y"}] * MAX_RESPONSE_HEADERS},
+            {"responseHeaders": [{"name": "x", "value": "y"}] * (MAX_RESPONSE_HEADERS + 1)},
+            {"responseHeaders": [{"name": "x", "value": "y" * 16384}] * (MAX_RESPONSE_HEADER_BYTES // 16384)},
+            {"responseErrorReason": "Failed"},
+            {"resourceType": "Image"},
+            {"request": {"url": "https://unauthorized.example.org/", "method": "GET"}},
+        ]
+        for changes in malformed:
+            with self.subTest(changes=list(changes)):
+                cdp, websocket, evidence = _cdp()
+                event = _response()
+                event["params"].update(changes)
+                with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                    cdp.handle_event(event)
+                self.assertEqual([message["method"] for message in websocket.sent], ["Fetch.failRequest"])
+                self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+
+    def test_missing_response_status_cannot_be_mistaken_for_request_stage(self) -> None:
+        cdp, websocket, evidence = _cdp()
+        event = _response()
+        del event["params"]["responseStatusCode"]
+        with self.assertRaisesRegex(AgentError, "response restriction failed"):
+            cdp.handle_event(event)
+        self.assertEqual(websocket.sent[-1]["method"], "Fetch.failRequest")
+        self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+
+    def test_failed_csp_command_aborts_and_marks_telemetry_loss(self) -> None:
+        cdp, _websocket, evidence = _cdp()
+        with patch.object(cdp, "command", side_effect=[AgentError("unsupported command"), {}]) as command:
+            with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                cdp.handle_event(_response())
+        self.assertEqual([call.args[0] for call in command.call_args_list], [
+            "Fetch.continueResponse", "Fetch.failRequest",
+        ])
+        self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+
+    def test_enforced_native_ws_and_wss_violations_record_attempt_without_url_text(self) -> None:
+        for scheme in ("ws", "wss"):
+            with self.subTest(scheme=scheme):
+                cdp, websocket, evidence = _cdp()
+                cdp.handle_event(_csp_issue(blockedURL=f"{scheme}://example.com/private-path?private-query=1"))
+                self.assertEqual(websocket.sent, [])
+                self.assertEqual(evidence.events, [{
+                    "sequence": 0,
+                    "source": "cdp",
+                    "kind": "active_interaction",
+                    "origin": None,
+                    "disposition": "attempted",
+                }])
+                self.assertNotIn("private-path", repr(evidence.bundle()))
+                self.assertNotIn("private-query", repr(evidence.bundle()))
+
+    def test_http_connection_violation_retains_only_canonical_blocked_origin(self) -> None:
+        cdp, _websocket, evidence = _cdp()
+        cdp.handle_event(_csp_issue(blockedURL="https://OTHER.example.org:443/private-path?private-query=1"))
+        self.assertEqual(evidence.events, [{
+            "sequence": 0,
+            "source": "cdp",
+            "kind": "network_request",
+            "origin": "https://other.example.org",
+            "disposition": "blocked",
+        }])
+
+    def test_native_directive_text_is_classified_by_its_exact_directive_name(self) -> None:
+        cdp, _websocket, evidence = _cdp()
+        cdp.handle_event(_csp_issue(violatedDirective="connect-src https://example.com"))
+        self.assertEqual([event["kind"] for event in evidence.events], ["active_interaction"])
+
+    def test_report_only_and_other_directives_do_not_become_active_attempts(self) -> None:
+        for overrides in (
+            {"isReportOnly": True},
+            {"violatedDirective": "script-src"},
+            {"violatedDirective": "default-src"},
+            {"violatedDirective": "connect-src-future"},
+        ):
+            with self.subTest(overrides=overrides):
+                cdp, websocket, evidence = _cdp()
+                cdp.handle_event(_csp_issue(**overrides))
+                self.assertEqual(evidence.events, [])
+                self.assertEqual(websocket.sent, [])
+
+    def test_malformed_native_connection_audit_fails_closed(self) -> None:
+        for overrides in (
+            {"isReportOnly": "false"},
+            {"blockedURL": None},
+            {"blockedURL": "wss://[invalid"},
+            {"blockedURL": "wss://example.com/" + "x" * 4096},
+            {"contentSecurityPolicyViolationType": "kInlineViolation"},
+        ):
+            with self.subTest(overrides=list(overrides)):
+                cdp, _websocket, evidence = _cdp()
+                with self.assertRaises(AgentError):
+                    cdp.handle_event(_csp_issue(**overrides))
+                self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
 
 
 class BrowserTerminationBoundaryTests(unittest.TestCase):

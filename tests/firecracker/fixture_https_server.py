@@ -145,8 +145,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlsplit(self.path).path
-        if path == "/control/info":
-            if not self._authorized_control():
+        if path in {"/control/info", "/fixture-info"}:
+            # Public identity contains only synthetic fixture metadata and a
+            # source hash; reset and action counters remain authenticated.
+            if path == "/control/info" and not self._authorized_control():
                 self._reject(HTTPStatus.FORBIDDEN)
                 return
             payload = json.dumps(

@@ -292,7 +292,7 @@ class GateReceiptBindingTests(unittest.TestCase):
         }
 
         def fixture_json(_origin: str, path: str, _token: str, **_options: object) -> dict:
-            return fixture_info if path == "/control/info" else {"reset": True}
+            return fixture_info if path == "/fixture-info" else {"reset": True}
 
         output = self.root / "gate.json"
         with (

@@ -36,6 +36,9 @@ MAX_WS_MESSAGE = 8 * 1024 * 1024
 MAX_CDP_COMMANDS = 50_000
 MAX_ATTESTATION_CHARS = 512 * 1024
 MAX_ATTESTATION_NODES = 10_000
+MAX_RESPONSE_HEADERS = 256
+MAX_RESPONSE_HEADER_BYTES = 64 * 1024
+HTTP_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$")
 PR_SET_DUMPABLE = 4
 FAILURE_STAGES = frozenset(
     {
@@ -86,6 +89,7 @@ CDP_SETUP_COMMANDS: tuple[tuple[str, dict[str, Any] | None], ...] = (
     ("Runtime.enable", None),
     ("Log.enable", None),
     ("Security.enable", None),
+    ("Audits.enable", None),
     (
         "Target.setAutoAttach",
         {
@@ -100,7 +104,13 @@ CDP_SETUP_COMMANDS: tuple[tuple[str, dict[str, Any] | None], ...] = (
     ),
     ("Target.setDiscoverTargets", {"discover": True}),
     ("Page.setInterceptFileChooserDialog", {"enabled": True}),
-    ("Fetch.enable", {"patterns": [{"urlPattern": "*", "requestStage": "Request"}]}),
+    (
+        "Fetch.enable",
+        {"patterns": [
+            {"urlPattern": "*", "requestStage": "Request"},
+            {"urlPattern": "*", "resourceType": "Document", "requestStage": "Response"},
+        ]},
+    ),
     ("Browser.setDownloadBehavior", {"behavior": "deny", "eventsEnabled": True}),
 )
 
@@ -380,7 +390,7 @@ class CDP:
     def __init__(self, websocket: WebSocket, evidence: Evidence, request: dict[str, Any]) -> None:
         self.websocket = websocket
         self.evidence = evidence
-        self.request = request
+        self.request = validate_probe_request(request)
         self.next_id = 1
         self.responses: dict[int, dict[str, Any]] = {}
         self.console_events = 0
@@ -424,6 +434,8 @@ class CDP:
             return
         if method == "Fetch.requestPaused":
             self._handle_paused(params)
+        elif method == "Audits.issueAdded":
+            self._handle_audit_issue(params)
         elif method == "Page.lifecycleEvent":
             frame_id = params.get("frameId")
             loader_id = params.get("loaderId")
@@ -474,6 +486,52 @@ class CDP:
             return origin_for_url(url)
         except BrowserContractError:
             return None
+
+    def _handle_audit_issue(self, params: dict[str, Any]) -> None:
+        issue = params.get("issue")
+        if not isinstance(issue, dict) or issue.get("code") != "ContentSecurityPolicyIssue":
+            return
+        details = issue.get("details")
+        violation = details.get("contentSecurityPolicyIssueDetails") if isinstance(details, dict) else None
+        if not isinstance(violation, dict):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP audit metadata is malformed")
+        directive = violation.get("violatedDirective")
+        report_only = violation.get("isReportOnly")
+        if (
+            not isinstance(directive, str)
+            or not directive.strip()
+            or len(directive) > 1024
+            or not isinstance(report_only, bool)
+        ):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP audit disposition is malformed")
+        if report_only or directive.split(None, 1)[0].lower() != "connect-src":
+            return
+        blocked_url = violation.get("blockedURL")
+        if (
+            violation.get("contentSecurityPolicyViolationType") != "kURLViolation"
+            or not isinstance(blocked_url, str)
+            or not 1 <= len(blocked_url) <= 4096
+        ):
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP connection audit is malformed")
+        try:
+            scheme = urlsplit(blocked_url).scheme.lower()
+        except ValueError as exc:
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("CSP connection URL is malformed") from exc
+        # Native CSP enforcement rejects WebSockets before their channel is
+        # created, so webSocketCreated/Fetch.requestPaused need not be emitted.
+        # Retain only the attempt: evidence v1 does not represent ws/wss origins.
+        if scheme in {"ws", "wss"}:
+            self.evidence.add("cdp", "active_interaction", "attempted")
+        else:
+            origin = self._safe_origin(blocked_url)
+            if origin is not None:
+                self.evidence.add("cdp", "network_request", "blocked", origin)
+            else:
+                self.evidence.add("cdp", "active_interaction", "attempted")
 
     def _record_url(self, kind: str, disposition: str, url: Any) -> None:
         if isinstance(url, str) and url in {"about:blank", "about:srcdoc"}:
@@ -538,8 +596,13 @@ class CDP:
     def _handle_paused(self, params: dict[str, Any]) -> None:
         request_id = params.get("requestId")
         request = params.get("request", {})
-        if not isinstance(request_id, str) or not isinstance(request, dict):
+        if not isinstance(request_id, str) or not 1 <= len(request_id) <= 256 or not isinstance(request, dict):
             self.evidence.add("cdp", "telemetry_loss", "observed")
+            raise AgentError("paused request metadata is malformed")
+        if any(name in params for name in (
+            "responseStatusCode", "responseErrorReason", "responseHeaders", "responseStatusText",
+        )):
+            self._handle_document_response(params)
             return
         url = request.get("url")
         method = request.get("method")
@@ -594,6 +657,83 @@ class CDP:
             self.command(action, arguments)
         except AgentError:
             self.evidence.add("cdp", "telemetry_loss", "observed")
+
+    def _handle_document_response(self, params: dict[str, Any]) -> None:
+        request_id = params["requestId"]
+        request = params["request"]
+        try:
+            url = request.get("url")
+            if (
+                params.get("resourceType") != "Document"
+                or request.get("method") not in {"GET", "HEAD"}
+                or not isinstance(url, str)
+                or not is_authorized_url(url, self.request["authorized_origins"])
+                or "responseErrorReason" in params
+            ):
+                raise AgentError("document response is unavailable or unauthorized")
+            status = params.get("responseStatusCode")
+            headers = params.get("responseHeaders")
+            phrase = params.get("responseStatusText")
+            if (
+                not isinstance(status, int)
+                or isinstance(status, bool)
+                or not 100 <= status <= 599
+                or not isinstance(headers, list)
+                or len(headers) >= MAX_RESPONSE_HEADERS
+                or (phrase is not None and (
+                    not isinstance(phrase, str)
+                    or len(phrase) > 256
+                    or any(not 32 <= ord(char) <= 126 for char in phrase)
+                ))
+            ):
+                raise AgentError("document response status or headers are malformed")
+            bounded_headers = []
+            header_bytes = 0
+            for header in headers:
+                if not isinstance(header, dict) or set(header) != {"name", "value"}:
+                    raise AgentError("document response header is malformed")
+                name, value = header["name"], header["value"]
+                if (
+                    not isinstance(name, str)
+                    or HTTP_HEADER_NAME.fullmatch(name) is None
+                    or not isinstance(value, str)
+                    or len(value) > 16384
+                    or any(ord(char) < 32 and char != "\t" or ord(char) == 127 for char in value)
+                ):
+                    raise AgentError("document response header is malformed")
+                header_bytes += len(name.encode("ascii")) + len(value.encode("utf-8")) + 4
+                if header_bytes > MAX_RESPONSE_HEADER_BYTES:
+                    raise AgentError("document response headers exceed their budget")
+                bounded_headers.append({"name": name, "value": value})
+            # Explicit HTTP(S) sources retain passive Fetch/XHR while excluding
+            # ws/wss. 'self' would also authorize same-host secure WebSockets.
+            # A second policy intersects with existing CSP instead of replacing
+            # it. The original response body never passes through the collector.
+            csp_header = {
+                "name": "Content-Security-Policy",
+                "value": "connect-src " + " ".join(self.request["authorized_origins"]),
+            }
+            header_bytes += len(csp_header["name"]) + len(csp_header["value"].encode("utf-8")) + 4
+            if header_bytes > MAX_RESPONSE_HEADER_BYTES:
+                raise AgentError("restricted document headers exceed their budget")
+            bounded_headers.append(csp_header)
+            arguments: dict[str, Any] = {
+                "requestId": request_id,
+                "responseCode": status,
+                "responseHeaders": bounded_headers,
+            }
+            if phrase is not None:
+                arguments["responsePhrase"] = phrase
+            self.command("Fetch.continueResponse", arguments)
+        except (AgentError, BrowserContractError, UnicodeError) as exc:
+            self.evidence.add("cdp", "telemetry_loss", "observed")
+            try:
+                self.command("Fetch.failRequest", {
+                    "requestId": request_id, "errorReason": "BlockedByClient",
+                })
+            except AgentError:
+                pass
+            raise AgentError("document response restriction failed") from exc
 
     def pump_until_loaded(self, frame_id: str, loader_id: str, deadline: float) -> None:
         expected = (frame_id, loader_id)

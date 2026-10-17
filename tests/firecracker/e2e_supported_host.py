@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -362,19 +363,30 @@ def _read_private_token(path: Path) -> str:
     return token
 
 
-def _fixture_json(origin: str, path: str, token: str, *, method: str = "GET") -> dict:
+class _NoFixtureRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "fixture redirects are forbidden", headers, fp)
+
+
+def _fixture_json(
+    origin: str, path: str, token: str | None, *, method: str = "GET", ca_file: Path | None = None,
+) -> dict:
+    headers = {"User-Agent": "cindermote-firecracker-e2e/1"}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         origin + path,
         method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "cindermote-firecracker-e2e/1",
-        },
+        headers=headers,
         data=b"" if method == "POST" else None,
     )
-    context = ssl.create_default_context()
+    context = ssl.create_default_context(cafile=ca_file)
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoFixtureRedirects(), urllib.request.HTTPSHandler(context=context),
+    )
     try:
-        with urllib.request.urlopen(request, timeout=10, context=context) as response:
+        with opener.open(request, timeout=10) as response:
             body = response.read(64 * 1024 + 1)
     except (OSError, urllib.error.URLError) as exc:
         raise RuntimeError("controlled HTTPS fixture is unavailable") from exc
@@ -387,6 +399,22 @@ def _fixture_json(origin: str, path: str, token: str, *, method: str = "GET") ->
     if not isinstance(value, dict):
         raise RuntimeError("controlled HTTPS fixture response is not an object")
     return value
+
+
+def _local_control_origin(origin: str | None, ca_file: Path | None) -> str | None:
+    if origin is None and ca_file is None:
+        return None
+    if origin is None or ca_file is None:
+        raise RuntimeError("local fixture control requires both origin and CA file")
+    parsed = urlsplit(origin)
+    if (
+        parsed.scheme != "https" or parsed.hostname != "127.0.0.1"
+        or parsed.username is not None or parsed.password is not None
+        or parsed.path not in {"", "/"} or parsed.query or parsed.fragment
+    ):
+        raise RuntimeError("local fixture control must use HTTPS on 127.0.0.1")
+    _path_record(ca_file, "fixture-control-ca")
+    return f"https://127.0.0.1:{parsed.port or 443}"
 
 
 def _write_private_json(path: Path, value: dict[str, Any]) -> None:
@@ -563,6 +591,8 @@ def run_gate(
     unauthorized_origin: str,
     token_file: Path,
     output_path: Path,
+    control_origin: str | None = None,
+    control_ca_file: Path | None = None,
 ) -> dict[str, Any]:
     # A failed rerun must never leave an older PASS artifact looking current.
     # Remove the prior name before even validating invocation inputs; all
@@ -581,6 +611,7 @@ def run_gate(
         raise RuntimeError("the competition fixture requires HTTPS origins")
     if primary == secondary:
         raise RuntimeError("the unauthorized fixture origin must be distinct")
+    local_control = _local_control_origin(control_origin, control_ca_file)
     token = _read_private_token(token_file)
     observer_key = load_or_create_key(OBSERVER_KEY_PATH)
     provenance_start: dict[str, Any] | None = None
@@ -597,6 +628,11 @@ def run_gate(
             "unauthorized_origin": secondary,
             "control_token_recorded": False,
             "source_hash_verified_by_both_origins": False,
+            "control_channel": {
+                "origin": local_control,
+                "ca_sha256": sha256_file(control_ca_file) if control_ca_file else None,
+                "token_sent_to_public_origins": local_control is None,
+            },
         },
         "command": (
             "sudo /usr/bin/python3 tests/firecracker/e2e_supported_host.py "
@@ -627,9 +663,12 @@ def run_gate(
             }[FIXTURE_SOURCE_PATHS[0]],
         }
         for fixture_origin in (primary, secondary):
-            if _fixture_json(fixture_origin, "/control/info", token) != expected_info:
+            if _fixture_json(fixture_origin, "/fixture-info", None) != expected_info:
                 raise RuntimeError("controlled HTTPS fixture identity check failed")
-            if _fixture_json(fixture_origin, "/control/reset", token, method="POST") != {"reset": True}:
+            if _fixture_json(
+                local_control or fixture_origin, "/control/reset", token,
+                method="POST", ca_file=control_ca_file,
+            ) != {"reset": True}:
                 raise RuntimeError("controlled HTTPS fixture reset failed")
         summary["fixture"]["source_hash_verified_by_both_origins"] = True
 
@@ -660,7 +699,9 @@ def run_gate(
         }
         fixture_counts: dict[str, dict[str, int]] = {}
         for label, fixture_origin in (("primary", primary), ("secondary", secondary)):
-            fixture = _fixture_json(fixture_origin, "/control/counts", token)
+            fixture = _fixture_json(
+                local_control or fixture_origin, "/control/counts", token, ca_file=control_ca_file,
+            )
             if fixture != expected_fixture:
                 raise AssertionError("a forbidden browser action reached the controlled fixture")
             fixture_counts[label] = fixture["counts"]
@@ -786,6 +827,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--origin")
     parser.add_argument("--unauthorized-origin")
     parser.add_argument("--control-token-file", type=Path)
+    parser.add_argument("--control-origin", help="optional loopback HTTPS endpoint for private fixture controls")
+    parser.add_argument("--control-ca-file", type=Path, help="CA certificate for the loopback control endpoint")
     parser.add_argument("--verify-output", action="store_true")
     parser.add_argument(
         "--output",
@@ -810,6 +853,8 @@ def main() -> int:
         unauthorized_origin=args.unauthorized_origin,
         token_file=args.control_token_file,
         output_path=args.output,
+        control_origin=args.control_origin,
+        control_ca_file=args.control_ca_file,
     )
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=True))
     return 0
