@@ -38,6 +38,7 @@ MAX_ATTESTATION_CHARS = 512 * 1024
 MAX_ATTESTATION_NODES = 10_000
 MAX_RESPONSE_HEADERS = 256
 MAX_RESPONSE_HEADER_BYTES = 64 * 1024
+MAX_DOCUMENT_BODY_BYTES = 4 * 1024 * 1024
 HTTP_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$")
 PR_SET_DUMPABLE = 4
 FAILURE_STAGES = frozenset(
@@ -386,6 +387,12 @@ class WebSocket:
             pass
 
 
+# An unconfirmed browser must retain both its process handle and DevTools
+# connection until the host revokes egress and kills the VM. In particular,
+# neither stack unwinding nor normal collector exit may detach interception.
+_termination_guards: list[tuple[subprocess.Popen[bytes], WebSocket | None]] = []
+
+
 class CDP:
     def __init__(self, websocket: WebSocket, evidence: Evidence, request: dict[str, Any]) -> None:
         self.websocket = websocket
@@ -436,6 +443,12 @@ class CDP:
             self._handle_paused(params)
         elif method == "Audits.issueAdded":
             self._handle_audit_issue(params)
+        elif method in {"Network.webSocketCreated", "Network.webTransportCreated"}:
+            # Native creation events cover channels Fetch does not intercept.
+            # This is observation, not proof that the handshake was prevented;
+            # an enforced CSP issue is the earlier blocking boundary. Never
+            # retain URL, initiator, or protocol data from these events.
+            self.evidence.add("cdp", "active_interaction", "attempted")
         elif method == "Page.lifecycleEvent":
             frame_id = params.get("frameId")
             loader_id = params.get("loaderId")
@@ -705,30 +718,76 @@ class CDP:
                 if header_bytes > MAX_RESPONSE_HEADER_BYTES:
                     raise AgentError("document response headers exceed their budget")
                 bounded_headers.append({"name": name, "value": value})
+            if status in {301, 302, 303, 307, 308} and any(
+                header["name"].lower() == "location" and header["value"].strip()
+                for header in bounded_headers
+            ):
+                # Redirect bodies are unavailable through getResponseBody and
+                # never execute as a document. Keep the response unchanged;
+                # every next-hop request and final document is intercepted.
+                self.command("Fetch.continueResponse", {"requestId": request_id})
+                return
+
+            body_result = self.command("Fetch.getResponseBody", {"requestId": request_id})
+            body_limit = min(MAX_DOCUMENT_BODY_BYTES, self.request["budgets"]["max_network_bytes"])
+            encoded = body_result.get("body")
+            if (
+                set(body_result) != {"body", "base64Encoded"}
+                or body_result.get("base64Encoded") is not True
+                or not isinstance(encoded, str)
+                or len(encoded) > 4 * ((body_limit + 2) // 3)
+            ):
+                raise AgentError("document body is unavailable or exceeds its budget")
+            body = base64.b64decode(encoded, validate=True)
+            if len(body) > body_limit or base64.b64encode(body).decode("ascii") != encoded:
+                raise AgentError("document body is malformed or exceeds its budget")
+            if not body:
+                # Do not risk an empty Binary being treated as absent by a
+                # browser build: absent bodies retain stale parsed CSP. Until
+                # that native edge is proven, empty documents fail closed.
+                raise AgentError("empty document body cannot establish response policy")
+
             # Explicit HTTP(S) sources retain passive Fetch/XHR while excluding
             # ws/wss. 'self' would also authorize same-host secure WebSockets.
             # A second policy intersects with existing CSP instead of replacing
-            # it. The original response body never passes through the collector.
+            # it. Chromium's Fetch body reader returns content-decoded bytes,
+            # not character-decoded text: preserve those bytes and Content-Type
+            # charset, but remove stale compression/framing and length headers.
+            # Body data stays inside the guest and never enters evidence.
+            bounded_headers = [
+                header for header in bounded_headers
+                if header["name"].lower() not in {
+                    "content-encoding", "transfer-encoding", "content-length",
+                }
+            ]
             csp_header = {
                 "name": "Content-Security-Policy",
                 "value": "connect-src " + " ".join(self.request["authorized_origins"]),
             }
-            header_bytes += len(csp_header["name"]) + len(csp_header["value"].encode("utf-8")) + 4
-            if header_bytes > MAX_RESPONSE_HEADER_BYTES:
-                raise AgentError("restricted document headers exceed their budget")
             bounded_headers.append(csp_header)
+            bounded_headers.append({"name": "Content-Length", "value": str(len(body))})
+            header_bytes = sum(
+                len(header["name"]) + len(header["value"].encode("utf-8")) + 4
+                for header in bounded_headers
+            )
+            if len(bounded_headers) > MAX_RESPONSE_HEADERS or header_bytes > MAX_RESPONSE_HEADER_BYTES:
+                raise AgentError("restricted document headers exceed their budget")
             arguments: dict[str, Any] = {
                 "requestId": request_id,
                 "responseCode": status,
                 "responseHeaders": bounded_headers,
+                # Supplying a body forces Chromium to create a fresh response
+                # head and parse the added policy. Header-only continueResponse
+                # preserves the original parsed_headers and does not enforce it.
+                "body": encoded,
             }
             # HTTP/2 has no reason phrase; Chromium reports an empty string.
-            # Passing that explicitly makes continueResponse reject the status.
+            # Passing that explicitly makes fulfillRequest reject the status.
             # Omitting it lets Chromium use its normal status phrase.
             if phrase:
                 arguments["responsePhrase"] = phrase
-            self.command("Fetch.continueResponse", arguments)
-        except (AgentError, BrowserContractError, UnicodeError) as exc:
+            self.command("Fetch.fulfillRequest", arguments)
+        except (AgentError, BrowserContractError, UnicodeError, ValueError) as exc:
             self.evidence.add("cdp", "telemetry_loss", "observed")
             try:
                 self.command("Fetch.failRequest", {
@@ -844,9 +903,27 @@ def _stop_browser(process: subprocess.Popen[bytes], websocket: WebSocket | None)
             process.wait(timeout=1)
         except subprocess.TimeoutExpired as exc:
             raise AgentError("Chromium termination was not confirmed") from exc
-    finally:
-        if websocket is not None:
-            websocket.close()
+    except BaseException as exc:
+        _termination_guards.append((process, websocket))
+        raise AgentError("Chromium termination was not confirmed") from exc
+    if websocket is not None:
+        websocket.close()
+
+
+def _hold_for_host_termination() -> None:
+    if not _termination_guards:
+        return
+    # The bounded failure result is sent before this hold. The host owns the
+    # outer deadline and stops the proxy before terminating the microVM. Keep
+    # CDP attached even if sending that result failed; the host also tears down
+    # on channel failure. Never retry navigation or release a paused request.
+    while True:
+        try:
+            time.sleep(1)
+        except BaseException:
+            # Catchable Python interruptions cannot turn the hold into normal
+            # process exit, which would close the retained DevTools socket.
+            continue
 
 
 _PAGE_ATTESTATION = r"""
@@ -1097,9 +1174,9 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        return 2
     try:
+        if len(sys.argv) != 2:
+            return 2
         _disable_collector_dumpability()
         wrapper = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
         if not isinstance(wrapper, dict):
@@ -1150,6 +1227,8 @@ def main() -> int:
         return 0 if "error" not in result else 1
     except BaseException:
         return 125
+    finally:
+        _hold_for_host_termination()
 
 
 if __name__ == "__main__":

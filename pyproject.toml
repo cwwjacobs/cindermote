@@ -27,7 +27,9 @@ warn_unused_configs = true
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "*/__pycache__/*", ".venv/*"]
+# Machine-local diagnostics, extracted tools and generated runtime state are
+# ignored by Git and are not shipped application source.
+omit = ["tests/*", "*/__pycache__/*", ".venv/*", ".cindermote/*"]
 
 [tool.coverage.report]
 # Count modules that no test imports (guest/ and broker/ have no __init__.py).

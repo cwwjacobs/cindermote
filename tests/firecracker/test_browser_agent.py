@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import copy
+import json
 import signal
 import subprocess
 import sys
@@ -21,13 +23,16 @@ from mote import browser_contract as _browser_contract  # noqa: E402
 
 sys.modules.setdefault("browser_contract", _browser_contract)
 
+from guest import browser_agent as _browser_agent  # noqa: E402
 from guest.browser_agent import (  # noqa: E402
     CDP,
     CDP_SETUP_COMMANDS,
     AgentError,
     Evidence,
+    MAX_DOCUMENT_BODY_BYTES,
     MAX_RESPONSE_HEADER_BYTES,
     MAX_RESPONSE_HEADERS,
+    MAX_WS_MESSAGE,
     ProbeFailure,
     _failure_code,
     _stop_browser,
@@ -37,7 +42,13 @@ from mote.browser_contract import make_probe_request  # noqa: E402
 
 class _FakeWebSocket:
     def __init__(self, results: dict[str, dict[str, Any]] | None = None) -> None:
-        self.results = results or {}
+        self.results = {
+            "Fetch.getResponseBody": {
+                "body": base64.b64encode(b"<html>fixture</html>").decode("ascii"),
+                "base64Encoded": True,
+            },
+            **(results or {}),
+        }
         self.sent: list[dict[str, Any]] = []
         self.incoming: list[dict[str, Any]] = []
 
@@ -102,12 +113,12 @@ def _csp_issue(**overrides: Any) -> dict[str, Any]:
 
 
 class NativeWebSocketBoundaryTests(unittest.TestCase):
-    def test_http2_empty_status_phrase_is_omitted_from_header_override(self) -> None:
+    def test_http2_empty_status_phrase_is_omitted_from_body_fulfillment(self) -> None:
         cdp, websocket, _ = _cdp()
         event = _response()
         event["params"]["responseStatusText"] = ""
         cdp.handle_event(event)
-        self.assertEqual(websocket.sent[-1]["method"], "Fetch.continueResponse")
+        self.assertEqual(websocket.sent[-1]["method"], "Fetch.fulfillRequest")
         self.assertEqual(websocket.sent[-1]["params"]["responseCode"], 200)
         self.assertNotIn("responsePhrase", websocket.sent[-1]["params"])
 
@@ -121,29 +132,79 @@ class NativeWebSocketBoundaryTests(unittest.TestCase):
         )
         self.assertNotIn("Page.navigate", commands)
 
-    def test_document_csp_is_added_without_replacing_original_headers_status_or_body(self) -> None:
-        cdp, websocket, evidence = _cdp()
+    def test_document_csp_preserves_existing_policy_status_and_exact_body_bytes(self) -> None:
+        body = b"<html>private-\xff\xfe-page</html>"
+        encoded = base64.b64encode(body).decode("ascii")
+        cdp, websocket, evidence = _cdp(results={
+            "Fetch.getResponseBody": {"body": encoded, "base64Encoded": True},
+        })
         event = _response()
-        event["params"].update({"responseStatusCode": 302, "responseStatusText": "Found"})
+        event["params"].update({"responseStatusCode": 201, "responseStatusText": "Created"})
         original_csp = {"name": "Content-Security-Policy", "value": "script-src 'self'; connect-src 'none'"}
         event["params"]["responseHeaders"].extend([
             original_csp,
             {"name": "set-cookie", "value": "private-cookie=private-value; Secure"},
-            {"name": "location", "value": "https://example.com/next"},
+            {"name": "content-encoding", "value": "gzip"},
+            {"name": "Transfer-Encoding", "value": "chunked"},
+            {"name": "CONTENT-LENGTH", "value": "23"},
         ])
         original_headers = copy.deepcopy(event["params"]["responseHeaders"])
         cdp.handle_event(event)
         sent = websocket.sent[-1]
-        self.assertEqual(sent["method"], "Fetch.continueResponse")
-        self.assertEqual(sent["params"]["responseCode"], 302)
-        self.assertEqual(sent["params"]["responsePhrase"], "Found")
-        self.assertEqual(sent["params"]["responseHeaders"][:-1], original_headers)
-        self.assertEqual(sent["params"]["responseHeaders"][-1], {
+        self.assertEqual([message["method"] for message in websocket.sent], [
+            "Fetch.getResponseBody", "Fetch.fulfillRequest",
+        ])
+        self.assertEqual(sent["params"]["responseCode"], 201)
+        self.assertEqual(sent["params"]["responsePhrase"], "Created")
+        self.assertEqual(sent["params"]["responseHeaders"][:-2], [
+            header for header in original_headers
+            if header["name"].lower() not in {"content-length", "content-encoding", "transfer-encoding"}
+        ])
+        self.assertEqual(sent["params"]["responseHeaders"][-2], {
             "name": "Content-Security-Policy", "value": "connect-src https://example.com",
         })
-        self.assertNotIn("body", sent["params"])
+        self.assertEqual(sent["params"]["responseHeaders"][-1], {
+            "name": "Content-Length", "value": str(len(body)),
+        })
+        self.assertEqual(base64.b64decode(sent["params"]["body"], validate=True), body)
         self.assertEqual(event["params"]["responseHeaders"], original_headers)
         self.assertEqual(evidence.events, [])
+        self.assertNotIn("private-", repr(evidence.bundle()))
+
+    def test_redirect_response_remains_unchanged_and_final_document_is_restricted(self) -> None:
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status):
+                cdp, websocket, evidence = _cdp()
+                event = _response()
+                event["params"]["responseStatusCode"] = status
+                event["params"]["responseHeaders"].append({
+                    "name": "Location", "value": "/next",
+                })
+                original = copy.deepcopy(event)
+                cdp.handle_event(event)
+                self.assertEqual(websocket.sent, [{
+                    "id": 1, "method": "Fetch.continueResponse",
+                    "params": {"requestId": "request-1"},
+                }])
+                self.assertEqual(event, original)
+                # The next request is still checked, then the final response
+                # must take the fresh-head body fulfillment path.
+                next_request = _paused()
+                next_request["params"]["request"]["url"] = "https://example.com/next"
+                cdp.handle_event(next_request)
+                self.assertEqual(websocket.sent[-1]["method"], "Fetch.continueRequest")
+                cdp.handle_event(_response())
+                self.assertEqual(websocket.sent[-1]["method"], "Fetch.fulfillRequest")
+                self.assertFalse(any(item["kind"] == "telemetry_loss" for item in evidence.events))
+
+    def test_nonredirect_3xx_without_location_cannot_skip_the_restriction(self) -> None:
+        cdp, websocket, _ = _cdp()
+        event = _response()
+        event["params"]["responseStatusCode"] = 302
+        cdp.handle_event(event)
+        self.assertEqual([message["method"] for message in websocket.sent], [
+            "Fetch.getResponseBody", "Fetch.fulfillRequest",
+        ])
 
     def test_csp_uses_all_exact_authorized_origins_and_keeps_passive_https_fetch_possible(self) -> None:
         websocket = _FakeWebSocket()
@@ -154,7 +215,7 @@ class NativeWebSocketBoundaryTests(unittest.TestCase):
         )
         cdp = CDP(websocket, evidence, request)
         cdp.handle_event(_response())
-        policy = websocket.sent[-1]["params"]["responseHeaders"][-1]["value"]
+        policy = websocket.sent[-1]["params"]["responseHeaders"][-2]["value"]
         self.assertEqual(policy, "connect-src https://assets.example.org:8443 https://example.com")
         for forbidden in ("'self'", "ws:", "wss:", "*"):
             self.assertNotIn(forbidden, policy)
@@ -202,15 +263,94 @@ class NativeWebSocketBoundaryTests(unittest.TestCase):
         self.assertEqual(websocket.sent[-1]["method"], "Fetch.failRequest")
         self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
 
-    def test_failed_csp_command_aborts_and_marks_telemetry_loss(self) -> None:
-        cdp, _websocket, evidence = _cdp()
-        with patch.object(cdp, "command", side_effect=[AgentError("unsupported command"), {}]) as command:
-            with self.assertRaisesRegex(AgentError, "response restriction failed"):
-                cdp.handle_event(_response())
-        self.assertEqual([call.args[0] for call in command.call_args_list], [
-            "Fetch.continueResponse", "Fetch.failRequest",
-        ])
-        self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+    def test_failed_body_or_fulfillment_command_aborts_and_marks_telemetry_loss(self) -> None:
+        for failed_method in ("Fetch.getResponseBody", "Fetch.fulfillRequest"):
+            with self.subTest(failed_method=failed_method):
+                cdp, _websocket, evidence = _cdp()
+                body_result = {"body": "eA==", "base64Encoded": True}
+                responses = [AgentError("unsupported command"), {}]
+                expected = ["Fetch.getResponseBody", "Fetch.failRequest"]
+                if failed_method == "Fetch.fulfillRequest":
+                    responses.insert(0, body_result)
+                    expected.insert(1, "Fetch.fulfillRequest")
+                with patch.object(cdp, "command", side_effect=responses) as command:
+                    with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                        cdp.handle_event(_response())
+                self.assertEqual([call.args[0] for call in command.call_args_list], expected)
+                self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+
+    def test_malformed_or_ambiguous_bodies_fail_closed_without_header_only_fallback(self) -> None:
+        for body_result in (
+            {},
+            {"body": "eA=="},
+            {"body": "eA==", "base64Encoded": 1},
+            {"body": "text", "base64Encoded": False},
+            {"body": 42, "base64Encoded": True},
+            {"body": "private%%%", "base64Encoded": True},
+            {"body": "\ud800", "base64Encoded": True},
+            {"body": "eA==\n", "base64Encoded": True},
+            {"body": "eB==", "base64Encoded": True},
+            {"body": "", "base64Encoded": True},
+            {"body": "eA==", "base64Encoded": True, "unexpected": "private"},
+        ):
+            with self.subTest(body_result=body_result):
+                cdp, websocket, evidence = _cdp(results={"Fetch.getResponseBody": body_result})
+                with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                    cdp.handle_event(_response())
+                self.assertEqual([message["method"] for message in websocket.sent], [
+                    "Fetch.getResponseBody", "Fetch.failRequest",
+                ])
+                self.assertTrue(any(event["kind"] == "telemetry_loss" for event in evidence.events))
+                self.assertNotIn("private", repr(evidence.bundle()))
+
+    def test_document_body_accepts_exact_budget_but_rejects_one_extra_byte(self) -> None:
+        for size, accepted in ((MAX_DOCUMENT_BODY_BYTES, True), (MAX_DOCUMENT_BODY_BYTES + 1, False)):
+            with self.subTest(size=size):
+                encoded = base64.b64encode(b"x" * size).decode("ascii")
+                cdp, websocket, _ = _cdp(results={
+                    "Fetch.getResponseBody": {"body": encoded, "base64Encoded": True},
+                })
+                if accepted:
+                    cdp.handle_event(_response())
+                    sent = websocket.sent[-1]
+                    self.assertEqual(sent["method"], "Fetch.fulfillRequest")
+                    self.assertLess(len(json.dumps(sent).encode("utf-8")), MAX_WS_MESSAGE)
+                else:
+                    with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                        cdp.handle_event(_response())
+                    self.assertEqual(websocket.sent[-1]["method"], "Fetch.failRequest")
+
+    def test_body_limit_also_respects_the_requested_network_budget(self) -> None:
+        for body in (b"x" * 7, b"x" * 8):
+            with self.subTest(size=len(body)):
+                cdp, websocket, _ = _cdp(results={
+                    "Fetch.getResponseBody": {
+                        "body": base64.b64encode(body).decode("ascii"), "base64Encoded": True,
+                    },
+                })
+                cdp.request["budgets"]["max_network_bytes"] = 7
+                if len(body) == 7:
+                    cdp.handle_event(_response())
+                    self.assertEqual(websocket.sent[-1]["method"], "Fetch.fulfillRequest")
+                else:
+                    with self.assertRaisesRegex(AgentError, "response restriction failed"):
+                        cdp.handle_event(_response())
+                    self.assertEqual(websocket.sent[-1]["method"], "Fetch.failRequest")
+
+    def test_native_created_channels_record_attempt_even_if_no_csp_issue_was_emitted(self) -> None:
+        for method in ("Network.webSocketCreated", "Network.webTransportCreated"):
+            with self.subTest(method=method):
+                cdp, websocket, evidence = _cdp()
+                cdp.handle_event({"method": method, "params": {
+                    "url": "wss://example.com/private-path?private-query=1",
+                    "initiator": {"stack": "private-stack"},
+                }})
+                self.assertEqual(evidence.events, [{
+                    "sequence": 0, "source": "cdp", "kind": "active_interaction",
+                    "origin": None, "disposition": "attempted",
+                }])
+                self.assertEqual(websocket.sent, [])
+                self.assertNotIn("private", repr(evidence.bundle()))
 
     def test_enforced_native_ws_and_wss_violations_record_attempt_without_url_text(self) -> None:
         for scheme in ("ws", "wss"):
@@ -284,13 +424,134 @@ class BrowserTerminationBoundaryTests(unittest.TestCase):
         kill.assert_called_once_with(12345, signal.SIGKILL)
         self.assertEqual(events, ["killed", "exited", "detached"])
 
-    def test_unconfirmed_termination_is_an_error(self) -> None:
+    def test_unconfirmed_termination_retains_interception_and_process(self) -> None:
         process = Mock(pid=12345)
         process.wait.side_effect = subprocess.TimeoutExpired("chromium", 1)
         websocket = Mock()
-        with patch("guest.browser_agent.os.killpg"), self.assertRaisesRegex(AgentError, "not confirmed"):
-            _stop_browser(process, websocket)
-        websocket.close.assert_called_once()
+        with patch.object(_browser_agent, "_termination_guards", []) as guards:
+            with patch("guest.browser_agent.os.killpg"), self.assertRaisesRegex(AgentError, "not confirmed"):
+                _stop_browser(process, websocket)
+            self.assertEqual(len(guards), 1)
+            self.assertIs(guards[0][0], process)
+            self.assertIs(guards[0][1], websocket)
+        websocket.close.assert_not_called()
+
+    def test_kill_failure_retains_guard_even_before_devtools_startup(self) -> None:
+        for websocket in (None, Mock()):
+            with self.subTest(devtools_started=websocket is not None):
+                process = Mock(pid=12345)
+                with patch.object(_browser_agent, "_termination_guards", []) as guards:
+                    with (
+                        patch("guest.browser_agent.os.killpg", side_effect=PermissionError("private failure")),
+                        self.assertRaisesRegex(AgentError, "not confirmed"),
+                    ):
+                        _stop_browser(process, websocket)
+                    self.assertEqual(len(guards), 1)
+                    self.assertIs(guards[0][0], process)
+                    self.assertIs(guards[0][1], websocket)
+                process.wait.assert_not_called()
+                if websocket is not None:
+                    websocket.close.assert_not_called()
+
+    def test_main_flushes_bounded_failure_before_holding_and_holds_if_write_fails(self) -> None:
+        for write_fails in (False, True):
+            with self.subTest(write_fails=write_fails):
+                events = []
+                messages = []
+                process = Mock(pid=12345)
+                websocket = Mock()
+                channel = Mock()
+                connection = Mock()
+                connection.makefile.return_value = channel
+                listener = Mock()
+                listener.accept.return_value = (connection, None)
+                wrapper = {
+                    "runtime": {"nonce": "test-job-nonce"},
+                    "probe_request": make_probe_request("https://example.com/"),
+                }
+
+                def write(line: bytes) -> None:
+                    message = json.loads(line)
+                    messages.append(message)
+                    events.append("write-" + message["type"])
+                    if write_fails and message["type"] == "result":
+                        raise BrokenPipeError("private channel failure")
+
+                channel.write.side_effect = write
+                channel.flush.side_effect = lambda: events.append("flush")
+
+                def failed_probe(*_args: Any) -> None:
+                    _stop_browser(process, websocket)
+
+                def hold() -> None:
+                    self.assertIs(_browser_agent._termination_guards[0][0], process)
+                    self.assertIs(_browser_agent._termination_guards[0][1], websocket)
+                    events.append("host-termination-hold")
+
+                with (
+                    patch.object(_browser_agent, "_termination_guards", []),
+                    patch.object(_browser_agent, "_hold_for_host_termination", side_effect=hold),
+                    patch.object(_browser_agent, "_disable_collector_dumpability"),
+                    patch.object(_browser_agent, "_run_probe", side_effect=failed_probe),
+                    patch.object(_browser_agent, "_read_json_line", return_value={"type": "run", "nonce": "test-job-nonce"}),
+                    patch.object(_browser_agent.socket, "socket", return_value=listener),
+                    patch.object(_browser_agent.os, "killpg", side_effect=PermissionError("private kill failure")),
+                    patch.object(_browser_agent.Path, "read_text", return_value=json.dumps(wrapper)),
+                    patch.object(_browser_agent.sys, "argv", ["browser_agent.py", "/job/request.json"]),
+                ):
+                    self.assertEqual(_browser_agent.main(), 125 if write_fails else 1)
+                self.assertEqual(events, [
+                    "write-hello", "flush", "write-result",
+                    *([] if write_fails else ["flush"]),
+                    "host-termination-hold",
+                ])
+                self.assertEqual(messages[-1]["error"], "guest_probe_failed")
+                self.assertEqual(messages[-1]["failure_code"], "agent_error")
+                self.assertNotIn("private", repr(messages))
+                websocket.close.assert_not_called()
+
+    def test_no_termination_guard_requires_no_host_hold(self) -> None:
+        with (
+            patch.object(_browser_agent, "_termination_guards", []),
+            patch.object(_browser_agent.time, "sleep") as sleep,
+        ):
+            _browser_agent._hold_for_host_termination()
+        sleep.assert_not_called()
+
+    def test_real_guard_stays_alive_after_catchable_interruption_until_external_kill(self) -> None:
+        code = f"""
+import sys
+sys.path.insert(0, {str(PROJECT_DIR)!r})
+from mote import browser_contract
+sys.modules['browser_contract'] = browser_contract
+from guest import browser_agent
+browser_agent._termination_guards.append((object(), None))
+real_sleep = browser_agent.time.sleep
+interrupted = False
+def interrupt_once(_seconds):
+    global interrupted
+    if not interrupted:
+        interrupted = True
+        print('interrupted', flush=True)
+        raise KeyboardInterrupt
+    print('holding', flush=True)
+    real_sleep(10)
+browser_agent.time.sleep = interrupt_once
+browser_agent._hold_for_host_termination()
+print('unsafe-return', flush=True)
+"""
+        process = subprocess.Popen(
+            [sys.executable, "-B", "-c", code],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                process.communicate(timeout=1)
+        finally:
+            process.kill()
+            stdout, stderr = process.communicate(timeout=5)
+        self.assertEqual(stdout, "interrupted\nholding\n")
+        self.assertEqual(stderr, "")
 
     def test_already_exited_browser_still_reaps_and_closes(self) -> None:
         process = Mock(pid=12345)
