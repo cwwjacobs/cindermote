@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import ssl
@@ -58,6 +59,7 @@ from cindermote.observer.receipt import (  # noqa: E402
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 FIXTURE_INSTANCE_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+FIXTURE_COUNTER_KEYS = ("post", "websocket", "popup", "unauthorized")
 CASES = (
     ("clean", "/case/clean", None),
     ("post", "/case/post", "web_active_interaction_attempt"),
@@ -451,9 +453,54 @@ def _local_control_origin(origin: str | None, ca_file: Path | None) -> str | Non
 def _zero_fixture_counts(value: Any) -> bool:
     return (
         isinstance(value, dict)
-        and set(value) == {"post", "websocket", "popup", "unauthorized"}
+        and set(value) == set(FIXTURE_COUNTER_KEYS)
         and all(type(count) is int and count == 0 for count in value.values())
     )
+
+
+def _fixture_counter_metadata(response: dict[str, Any], token: str) -> dict[str, Any]:
+    """Retain bounded counter metadata without reflecting control-plane text."""
+
+    expected_fields = {"schema_version", "instance_id", "counts"}
+    instance = response.get("instance_id")
+    raw_counts = response.get("counts")
+    counts = raw_counts if isinstance(raw_counts, dict) else {}
+    safe_counts: dict[str, Any] = {}
+    for name in FIXTURE_COUNTER_KEYS:
+        value = counts.get(name)
+        if type(value) is bool:
+            safe_counts[name] = value
+        elif (
+            type(value) in {int, float}
+            and abs(value) <= 2**53 - 1
+            and (type(value) is int or math.isfinite(value))
+        ):
+            safe_counts[name] = value
+        else:
+            safe_counts[name] = "invalid-counter-value"
+    metadata: dict[str, Any] = {
+        "schema_version": (
+            "cindermote.e2e-fixture/v1"
+            if response.get("schema_version") == "cindermote.e2e-fixture/v1"
+            else "invalid-fixture-schema"
+        ),
+        "instance_id": (
+            instance if isinstance(instance, str)
+            and FIXTURE_INSTANCE_PATTERN.fullmatch(instance) is not None
+            and instance != token else None
+        ),
+        "counts": safe_counts,
+    }
+    rejection = {
+        "unexpected_field_count": len(set(response) - expected_fields),
+        "missing_field_count": len(expected_fields - set(response)),
+        "unexpected_counter_field_count": len(set(counts) - set(FIXTURE_COUNTER_KEYS)),
+        "missing_counter_field_count": len(set(FIXTURE_COUNTER_KEYS) - set(counts)),
+        "invalid_counter_object": not isinstance(raw_counts, dict),
+    }
+    if any(rejection.values()):
+        metadata["rejection_metadata"] = rejection
+    return metadata
 
 
 def _verify_fixture_identity(
@@ -783,19 +830,19 @@ def run_gate(
             "instance_id": fixture_identity["instance_id"],
             "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
         }
-        fixture_counts: dict[str, dict[str, int]] = {}
+        fixture_counts: dict[str, dict[str, Any]] = {}
         summary["fixture_counts"] = fixture_counts
         summary["fixture_counter_responses"] = {}
         for label, fixture_origin in (("primary", primary), ("secondary", secondary)):
             fixture = _fixture_json(
                 local_control or fixture_origin, "/control/counts", token, ca_file=control_ca_file,
             )
-            # Preserve the observed bounded response before any assertion so
-            # signed FAIL records retain the action count and server lifetime
-            # which caused rejection. Labels still share the scope above.
-            summary["fixture_counter_responses"][label] = fixture
-            if isinstance(fixture.get("counts"), dict):
-                fixture_counts[label] = fixture["counts"]
+            # Preserve only fixed metadata before asserting against the raw
+            # response: malformed controls must not echo a token or page text
+            # into signed FAIL records. Labels share the scope above.
+            counter_metadata = _fixture_counter_metadata(fixture, token)
+            summary["fixture_counter_responses"][label] = counter_metadata
+            fixture_counts[label] = dict(counter_metadata["counts"])
             if fixture.get("instance_id") != fixture_identity["instance_id"]:
                 raise AssertionError("controlled fixture instance changed before counter verification")
             if fixture != expected_fixture or not _zero_fixture_counts(fixture.get("counts")):

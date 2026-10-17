@@ -16,9 +16,9 @@
   },
   "browser_rootfs": {
     "path": "images/browser-rootfs.ext4",
-    "sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+    "sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
     "build_receipt_path": "images/browser-rootfs.receipt.json",
-    "build_receipt_sha256": "9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+    "build_receipt_sha256": "bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
     "required_receipt_schema": "cindermote.browser-rootfs/v1",
     "source_date_epoch": 1792152000,
     "filesystem_uuid": "7a1c357e-64a8-4ef8-9cb1-7a2fd676dd10",

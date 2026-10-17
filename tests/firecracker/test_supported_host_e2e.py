@@ -335,7 +335,8 @@ class GateReceiptBindingTests(unittest.TestCase):
 
     def _run_gate_with_cases(
         self, cases: tuple, *, counter_instance: str = "c" * 32,
-        counter_counts: dict | None = None, expect_failure: bool = True,
+        counter_counts: dict | None = None, counter_response: dict | None = None,
+        control_token: str = "test-token", expect_failure: bool = True,
     ) -> dict:
         fixture_hash = "a" * 64
         fixture_info = {
@@ -350,6 +351,8 @@ class GateReceiptBindingTests(unittest.TestCase):
             if path in {"/fixture-info", "/control/info"}:
                 return fixture_info
             if path == "/control/counts":
+                if counter_response is not None:
+                    return counter_response
                 return {
                     "schema_version": "cindermote.e2e-fixture/v1",
                     "instance_id": counter_instance,
@@ -365,7 +368,7 @@ class GateReceiptBindingTests(unittest.TestCase):
             mock.patch.multiple(
                 gate,
                 CASES=cases,
-                _read_private_token=mock.Mock(return_value="test-token"),
+                _read_private_token=mock.Mock(return_value=control_token),
                 collect_gate_provenance=mock.Mock(return_value=copy.deepcopy(self.provenance)),
                 verify_gate_provenance=mock.Mock(),
                 preflight_firecracker=mock.Mock(return_value=SimpleNamespace(
@@ -481,6 +484,53 @@ class GateReceiptBindingTests(unittest.TestCase):
         mutated = copy.deepcopy(result)
         mutated["fixture_counter_responses"]["primary"]["counts"]["popup"] = 0
         self.assertFalse(verify_signature(mutated, self.key))
+
+    def test_reflected_counter_tokens_and_raw_text_never_enter_signed_failure(self) -> None:
+        raw_text = "untrusted page contents which must remain private"
+        for token in ("private_control_token_0123456789abcdef", "f1e2d3c4" * 4):
+            with self.subTest(token_shape="hex32" if len(token) == 32 else "general"):
+                response = {
+                    "schema_version": f"Bearer {token}",
+                    "instance_id": token,
+                    "counts": {
+                        "post": token,
+                        "websocket": {"Authorization": f"Bearer {token}", "body": raw_text},
+                        "popup": 1,
+                        "unauthorized": [token, raw_text],
+                        token: raw_text,
+                    },
+                    token: {"raw_text": raw_text},
+                }
+                result = self._run_gate_with_cases((), counter_response=response, control_token=token)
+                serialized = json.dumps(result, allow_nan=False)
+                self.assertNotIn(token, serialized)
+                self.assertNotIn(raw_text, serialized)
+                self.assertNotIn("Authorization", serialized)
+                observed = result["fixture_counter_responses"]["primary"]
+                self.assertEqual(observed["schema_version"], "invalid-fixture-schema")
+                self.assertIsNone(observed["instance_id"])
+                self.assertEqual(observed["counts"]["popup"], 1)
+                self.assertEqual(observed["counts"]["post"], "invalid-counter-value")
+                self.assertEqual(result["fixture_counts"]["primary"], observed["counts"])
+                self.assertEqual(observed["rejection_metadata"]["unexpected_field_count"], 1)
+                self.assertEqual(observed["rejection_metadata"]["unexpected_counter_field_count"], 1)
+
+    def test_malformed_counter_numbers_remain_signable_and_fail_original_validation(self) -> None:
+        for value in (float("nan"), float("inf"), float("-inf"), 10**100, "0", False, 0.0):
+            with self.subTest(type=type(value).__name__, value=str(value)[:10]):
+                response = {
+                    "schema_version": "cindermote.e2e-fixture/v1",
+                    "instance_id": "c" * 32,
+                    "counts": {"post": value, "websocket": 0, "popup": 0, "unauthorized": 0},
+                }
+                result = self._run_gate_with_cases((), counter_response=response)
+                self.assertIn("forbidden browser action reached", result["failure"])
+                json.dumps(result, allow_nan=False)
+                recorded = result["fixture_counter_responses"]["primary"]["counts"]["post"]
+                if type(value) in {bool, float} and value == 0:
+                    self.assertIs(type(recorded), type(value))
+                else:
+                    self.assertEqual(recorded, "invalid-counter-value")
 
     def test_offline_gate_rejects_signed_malformed_or_unbound_counter_responses(self) -> None:
         cases = (("clean", "/case/clean", None),)
