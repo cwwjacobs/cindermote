@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "connect_authority": null,
+      "disposition": "failed",
+      "kind": "lifecycle",
+      "sequence": 0,
+      "source": "vm",
+      "web_origin": null
+    },
+    {
+      "connect_authority": null,
+      "disposition": "observed",
+      "kind": "telemetry_loss",
+      "sequence": 1,
+      "source": "vm",
+      "web_origin": null
+    }
+  ],
+  "evidence_version": "cindermote.browser-evidence/v2",
+  "streams": {
+    "browser": {
+      "complete": false,
+      "event_count": 0
+    },
+    "cdp": {
+      "complete": false,
+      "event_count": 0
+    },
+    "egress": {
+      "complete": false,
+      "event_count": 0
+    },
+    "vm": {
+      "complete": false,
+      "event_count": 2
+    }
+  }
+}

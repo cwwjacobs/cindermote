@@ -478,8 +478,10 @@ The host remained on Void `6.18.57_1` with swap disabled. The root browser
 preflight passed all 24 required checks before each controlled-fixture gate
 attempt. Two temporary public HTTPS origins served a locally controlled
 fixture, and the gate checked that both returned the expected source hash.
-The fixture token, observer HMAC key, and raw Chromium diagnostic log stayed
-local.
+The observer HMAC key and raw Chromium diagnostic log stayed local. The
+fixture token was excluded from published artifacts, but these historical
+runs sent it through the public HTTPS tunnel control endpoints. The later
+browser-gate remediation provides certificate-verified loopback controls.
 
 Four retained signed failure attempts show progress without a fabricated
 pass. Candidate 2 failed guest navigation with the bounded code
@@ -516,3 +518,60 @@ Ruff, `dash -n guest/cindermote-init`, `python3 cli.py kernel-laws`, and
 `git diff --check` passed. The detailed result and remaining Chromium startup
 blocker are in [the browser audit](docs/audits/2026-10-16-browser-followup.md)
 and [public proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md).
+
+
+## 2026-10-17 — browser gate pass with retained failures
+
+Exact host-test source: `6c9a0916fced21f179b0d1a42195c9f65813ca8f`.
+The five controlled HTTPS cases passed on Void `6.18.57_1` with Firecracker/
+jailer `1.17.0`, guest Linux `6.1.188`, and signed Debian headless shell
+`155.0.8059.79-1~deb12u1`. Clean `mf-web-5d992b85` received `ALLOW`; POST
+`mf-web-719798d3`, WebSocket `mf-web-c1e5d937`, popup `mf-web-2f65fd6e`,
+and unauthorized image `mf-web-24c4858c` received `DENY`. All four evidence
+streams completed, the browser sandbox was active, every purge verified, and
+all 24 preflight/postflight checks passed. Both labels' shared fixture counters
+were zero and bound to the same authenticated instance. The private token
+traveled only over certificate-verified loopback HTTPS.
+
+The separate public example.org job `mf-web-2f9b79a1` also received `ALLOW`,
+with complete telemetry and verified purge. Root verification re-read the
+six retained gate HMACs and 18 gate-job receipts, schemas, request/evidence
+bindings, reductions, and source files; the final persisted gate passed its
+full current-source/assets verifier. The public smoke was checked separately,
+including all six runtime asset bindings. Historical build receipt hashes
+were checked; superseded historical image bytes were not all rehashed.
+
+Two final no-cache Docker builds (G/H) matched both rootfs
+`7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d`
+and build receipt
+`bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1`.
+The image stays local. This is same-host repeatability, not an independent
+rebuild or host attestation.
+
+The final full suite passed **522 tests and 348 subtests**, with **3 skips**
+and **68.22% coverage**; the 60% coverage gate was not lowered. Skips were
+the opt-in browser KVM test, live-provider agent test, and root cgroup test.
+The real browser gate above supplies the separate privileged evidence. Ruff,
+the 17-file typed core, kernel-laws, shell syntax, and compilation of all 95
+tracked Python files passed. An in-memory mutation replacing body fulfillment
+with header-only CSP made its preservation regression fail, then pass when
+restored.
+
+Five additional failed gates remain published: two false WebSocket ALLOWs,
+an HTTP/2 navigation failure, an upgrade blocked by stale flat RAM binaries,
+and a five-case run whose decisions all matched but whose popup request
+reached the fixture once. The stale-pool receipt's purge remains unverified;
+the popup counter failure remains a failure after the native creation-block
+repair. Both profiles now share verified per-hash executable pools. Failed
+counter responses retain fixed metadata while reflected text/tokens are
+removed; assertions use the original response.
+
+The [audit](docs/audits/2026-10-16-browser-gate.md) and
+[public bundle](docs/audits/evidence/2026-10-16-browser-gate/README.md) provide
+all selected receipts, evidence, logs, build receipts, and checksums. Published
+HMAC artifacts cannot be independently authenticated without the private
+observer key. Known newer Chromium advisories remain unresolved, the guest
+kernel is behind upstream 6.1.190, and comprehensive CVE clearance was not
+established. This is not hostile-production security clearance. Delayed
+behavior, all native transports, general efficacy, and live-provider agent
+`ALLOW` remain outside the demonstrated result. No new release is claimed.

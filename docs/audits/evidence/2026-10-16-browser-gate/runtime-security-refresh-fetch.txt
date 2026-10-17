@@ -1,0 +1,5 @@
+/tmp/cindermote-firecracker.yJQXw2/firecracker.tgz: OK
+/tmp/cindermote-firecracker.yJQXw2/release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64: OK
+/tmp/cindermote-firecracker.yJQXw2/release-v1.17.0-x86_64/jailer-v1.17.0-x86_64: OK
+/tmp/cindermote-firecracker.yJQXw2/vmlinux-6.1.188: OK
+Firecracker v1.17.0, jailer, and Linux 6.1.188 verified and installed under /home/operator/Desktop/cindermote/.cindermote/cache

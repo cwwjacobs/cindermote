@@ -1,0 +1,9 @@
+{
+  "actual_fixture_control_token_absent": true,
+  "actual_observer_key_raw_hex_base64_absent": true,
+  "files_scanned": 294,
+  "fixture_private_key_files_absent": true,
+  "private_pem_headers_absent": true,
+  "schema_version": "cindermote.publication-private-material-check/v1",
+  "scope": "Tracked repository files and selected new proof bundle; exact known local secret values; not a comprehensive secret scanner"
+}

@@ -1,0 +1,9 @@
+{
+  "mutant_test_errors": 0,
+  "mutant_test_failures": 1,
+  "mutation": "replace explicit-body fulfillment with ineffective header-only response override",
+  "production_source_modified": false,
+  "restored_test_passed": true,
+  "schema_version": "cindermote.browser-regression-mutation/v1",
+  "test": "test_document_csp_preserves_existing_policy_status_and_exact_body_bytes"
+}

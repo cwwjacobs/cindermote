@@ -1,0 +1,38 @@
+{
+  "all_receipt_source_hashes_match_checkout": true,
+  "both_no_cache": true,
+  "browser": {
+    "binary_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+    "sandbox_gid": 0,
+    "sandbox_mode": "04755",
+    "sandbox_required": true,
+    "sandbox_uid": 0,
+    "version": "Chromium 155.0.8059.79"
+  },
+  "build_inputs": {
+    "base_image_digest": "sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
+    "chromium_package_version": "155.0.8059.79-1~deb12u1",
+    "debian_snapshot": "20261016T120000Z",
+    "e2fsdroid_sha256": "5acfcba27c1a362a9df97879100910d79014090c1ef999a7bc9d7a74998fa0b4",
+    "e2fsprogs_package_version": "1.47.0-2+b2",
+    "fakeroot_package_version": "1.31-1.2",
+    "platform_tools_sha256": "ab885c20f1a9cb528eb145b9208f53540efa3d26258ac3ce4363570a0846f8f7",
+    "platform_tools_url": "https://dl.google.com/android/repository/platform-tools_r33.0.3-linux.zip"
+  },
+  "builds": [
+    "E",
+    "F"
+  ],
+  "historical_comparison_before_popup_repair": true,
+  "independent_host_rebuild": false,
+  "receipt_bytes_equal": true,
+  "receipt_sha256": "9b8a8ba8ff884a6888c2153e23a6adcd7268d6473ed59b4715b969c371e082f2",
+  "reviewed_and_lock_repinned": true,
+  "rootfs_hashes_equal": true,
+  "rootfs_sha256": "029a38758ad1b1798aa6ace3c392173476ea73f19b5275c59e62b799e077f455",
+  "same_host": true,
+  "schema_version": "cindermote.browser-rootfs-rebuild-comparison/v1",
+  "source_commit": "2fde07773ad694737e084b5a409f73a4f4a74caa",
+  "source_date_epoch": 1792152000,
+  "superseded_builds": "Chromium150 builds A/B matched; guarded150 C completed; D was interrupted for security refresh and is not a final repeatability pass."
+}

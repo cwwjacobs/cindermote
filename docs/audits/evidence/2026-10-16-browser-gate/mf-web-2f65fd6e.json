@@ -1,0 +1,280 @@
+{
+  "browser_probe": {
+    "artifacts": {
+      "attestation_complete": true,
+      "console_event_count": 0,
+      "dom_sha256": "f39362e39d7630d602541461273dfaa882ba735cdf2a36460897e6365f5bf815",
+      "raw_retained": false,
+      "screenshot_sha256": "0e576f6fc33277e3b1f4a96d160fb34f0b2d9091adb11ca64f3214995780b273",
+      "visible_text_sha256": "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d"
+    },
+    "evidence": {
+      "events_observed": 9,
+      "schema_version": "cindermote.browser-evidence/v2",
+      "sha256": "197c5878c74e5d3e2b3f4ee9e7fdcbda8a90548a0f1c6805d248e805328e328e",
+      "stream_status": {
+        "browser": {
+          "complete": true,
+          "event_count": 3,
+          "observed_event_count": 3
+        },
+        "cdp": {
+          "complete": true,
+          "event_count": 3,
+          "observed_event_count": 3
+        },
+        "egress": {
+          "complete": true,
+          "event_count": 1,
+          "observed_event_count": 1
+        },
+        "vm": {
+          "complete": true,
+          "event_count": 2,
+          "observed_event_count": 2
+        }
+      }
+    },
+    "findings": [
+      {
+        "count": 1,
+        "finding_id": "web_popup_attempt",
+        "severity": "HIGH"
+      }
+    ],
+    "input": {
+      "authorized_origins": [
+        "https://february-either-pavilion-teach.trycloudflare.com"
+      ],
+      "contract_version": "cindermote.browser-probe/v1",
+      "navigation_mode": "passive",
+      "normalized_origin": "https://february-either-pavilion-teach.trycloudflare.com",
+      "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+      "request_sha256": "8b306d44d5314ef05810330e181c8c43b933171556c57502ce2eeca7099f4e61",
+      "url_sha256": "b39d4bb070db1b946a0de4c78f8f01e86632b20fd613d03b7975d02491bcc7e7"
+    },
+    "reduction": {
+      "complete": true,
+      "decision": "DENY",
+      "events_observed": 9,
+      "evidence_version": "cindermote.browser-evidence/v2",
+      "fail_closed": false,
+      "findings": [
+        {
+          "count": 1,
+          "finding_id": "web_popup_attempt",
+          "severity": "HIGH"
+        }
+      ],
+      "streams": {
+        "browser": {
+          "complete": true,
+          "declared_event_count": 3,
+          "observed_event_count": 3
+        },
+        "cdp": {
+          "complete": true,
+          "declared_event_count": 3,
+          "observed_event_count": 3
+        },
+        "egress": {
+          "complete": true,
+          "declared_event_count": 1,
+          "observed_event_count": 1
+        },
+        "vm": {
+          "complete": true,
+          "declared_event_count": 2,
+          "observed_event_count": 2
+        }
+      },
+      "telemetry_incomplete": false
+    },
+    "runtime": {
+      "admitted": true,
+      "browser_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+      "browser_version": "Chromium 155.0.8059.79",
+      "cgroup_limits": {
+        "cpu.max": "100000 100000",
+        "memory.max": "1610612736",
+        "memory.swap.max": "0",
+        "pids.max": "256"
+      },
+      "egress_worker": {
+        "capabilities_zero": true,
+        "dumpable": false,
+        "gid": 985,
+        "group": "cindermote-proxy",
+        "no_new_privs": true,
+        "privilege_separated": true,
+        "protocol_version": "cindermote.browser-egress-worker/v2",
+        "uid": 988,
+        "user": "cindermote-proxy"
+      },
+      "firecracker_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+      "firecracker_version": "1.17.0",
+      "guest_writes_tmpfs_only": true,
+      "host_runtime_tmpfs": true,
+      "host_swap_disabled": true,
+      "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+      "jailer_supervision": {
+        "external_supervisor": true,
+        "parent_death_signal": "SIGTERM",
+        "startup_reconciliation": "exact-owned-prefix",
+        "vmm_process_group_kill": "SIGKILL"
+      },
+      "job_image_sha256": "f44bf929565cc3b3932d46309946d12d8af8e9cfa3bfb7854bf7bba19fd12a56",
+      "kernel_sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+      "mmds_enabled": false,
+      "network_mode": "explicit-proxy-only",
+      "rootfs_read_only": true,
+      "rootfs_receipt_sha256": "bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
+      "rootfs_sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
+      "vmm_exit_code": 137,
+      "vmm_identity": {
+        "gid": 986,
+        "group": "cindermote-vmm",
+        "uid": 989,
+        "user": "cindermote-vmm"
+      }
+    },
+    "schema_version": "cindermote.browser-probe-receipt/v2"
+  },
+  "budget_exhausted": false,
+  "budgets_granted": {
+    "cpu_vcpu": 1,
+    "fs_writes": "guest tmpfs only",
+    "interaction": "passive navigation only",
+    "max_events": 10000,
+    "max_network_bytes": 16777216,
+    "max_redirects": 8,
+    "max_tabs": 1,
+    "ram_mib": 1024,
+    "wall_clock_sec": 20
+  },
+  "canaries_touched": {},
+  "capabilities": {
+    "binding": {
+      "job_id": "mf-web-2f65fd6e",
+      "request_sha256": "8b306d44d5314ef05810330e181c8c43b933171556c57502ce2eeca7099f4e61"
+    },
+    "denied": [
+      "browser.click",
+      "browser.type",
+      "browser.upload",
+      "browser.download"
+    ],
+    "granted": [
+      "browser.navigate"
+    ],
+    "requested": [
+      "browser.navigate"
+    ]
+  },
+  "destinations_attempted": {
+    "february-either-pavilion-teach.trycloudflare.com:443": [
+      "proxy_connect_authority_allowed"
+    ],
+    "https://february-either-pavilion-teach.trycloudflare.com": [
+      "browser_cdp_web_origin_allowed"
+    ]
+  },
+  "detector_findings": [
+    {
+      "count": 1,
+      "rule_id": "web_popup_attempt",
+      "severity": "HIGH"
+    }
+  ],
+  "gate": {
+    "final_authority": "policy_gate_autonomous",
+    "final_decision": "DENY",
+    "human_gate_override": "none",
+    "override_blocked_by_fail_closed": false,
+    "policy_gate_decision": "DENY",
+    "policy_gate_reason": "uncertain_classification"
+  },
+  "identity": {
+    "artifact_sha256": "8b306d44d5314ef05810330e181c8c43b933171556c57502ce2eeca7099f4e61",
+    "artifact_type": "browser-probe",
+    "job_id": "mf-web-2f65fd6e",
+    "received_at": "2026-10-17T05:04:48.571815+00:00",
+    "submitted_by": "competition-e2e"
+  },
+  "isolation": {
+    "cgroups_used": true,
+    "guest_writes_tmpfs_only": true,
+    "host_runtime_tmpfs": true,
+    "host_swap_disabled": true,
+    "jailer_used": true,
+    "kvm_used": true,
+    "mlock_used": false,
+    "mode": "firecracker",
+    "namespace_used": true,
+    "rootfs_read_only": true,
+    "seccomp_loaded": true
+  },
+  "outward_report": {
+    "canaries_tripped": [],
+    "capabilities_requested": [
+      "browser.navigate"
+    ],
+    "destinations": [
+      "february-either-pavilion-teach.trycloudflare.com:443",
+      "https://february-either-pavilion-teach.trycloudflare.com"
+    ],
+    "evidence": [
+      {
+        "count": 1,
+        "rule_id": "web_popup_attempt",
+        "tap_category": "process_tree"
+      }
+    ],
+    "risk_level": "suspicious",
+    "uncertainty": 0.2
+  },
+  "purge": {
+    "cgroup_removed": true,
+    "egress_worker_reaped": true,
+    "network_namespace_removed": true,
+    "processes_reaped": true,
+    "ram_jail_removed": true,
+    "verified_externally": true
+  },
+  "receipt_signature": "a285895c7d446fa9c7695199fea91ff7f0ce6b2fc81a6a547ed1ad72565e9769",
+  "residual_uncertainty": 0.2,
+  "snapshot_policy": {
+    "memory_snapshots": "disabled-v1",
+    "policy_hash": "2bcf44a667a9dc7059b9cf0bf40bb3b981e9953b7f82b55e92d18c3930bb238b",
+    "policy_version": "cindermote-hotcell-v1.3",
+    "snapshot_sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d",
+    "snapshot_verified_by": "host-observer (external hash + read-only drive)"
+  },
+  "telemetry_incomplete": false,
+  "telemetry_summary": {
+    "events_observed": 9,
+    "metadata_only": true,
+    "streams": {
+      "browser": {
+        "complete": true,
+        "event_count": 3,
+        "observed_event_count": 3
+      },
+      "cdp": {
+        "complete": true,
+        "event_count": 3,
+        "observed_event_count": 3
+      },
+      "egress": {
+        "complete": true,
+        "event_count": 1,
+        "observed_event_count": 1
+      },
+      "vm": {
+        "complete": true,
+        "event_count": 2,
+        "observed_event_count": 2
+      }
+    }
+  }
+}

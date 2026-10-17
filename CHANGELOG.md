@@ -40,11 +40,17 @@ imported them.
 
 ### Added
 
+- A five-case supported-host browser gate pass and public example.org ALLOW,
+  with complete telemetry and verified purge at exact source `6c9a091`.
+  Six gate artifacts retain five failed gates as well as success; the public
+  bundle includes 19 job receipts/evidence pairs, build logs and checksums.
+  Known browser security debt and local-only HMAC authentication remain explicit.
+
 - Controlled-fixture browser follow-up with four retained signed failures,
   local HMAC/schema/reduction verification, public checksums, and clear
-  command-line instructions for creating and inspecting runs. The five-case
-  gate still fails at its clean case because Chromium makes blocked background
-  requests; no browser `ALLOW` is claimed.
+  command-line instructions for creating and inspecting runs. A later
+  [browser hardening audit](docs/audits/2026-10-16-browser-gate.md) retains
+  subsequent failed attempts and records the final candidate's exact outcome.
 - Bounded browser failure stage/code in signed receipts, without returning
   untrusted URL or page text.
 - `scripts/open-agent-probe-evidence.py`: the offline viewer for sealed guest
@@ -75,6 +81,14 @@ imported them.
 
 ### Changed
 
+- Browser guests use Debian's dedicated headless shell to avoid desktop
+  profile background services. Documents receive an additional explicit-origin
+  CSP through bounded body fulfillment; native CSP and transport events record
+  attempts. Unsupported document bodies fail closed. Collection ends at a
+  frozen load snapshot and DevTools stays attached through browser termination.
+- Runtime pins refresh to Firecracker/jailer `1.17.0`, guest Linux `6.1.188`,
+  and signed Debian Chromium `155.0.8059.79-1~deb12u1`. Known newer browser
+  advisories remain open; this is not hostile-production security clearance.
 - The Firecracker rootfs build context now allows only pinned image inputs,
   excluding local keys and audit state from transfer to Docker. Guest init
   disables unused IPv6, Chromium's exact authorized favicon fetch is handled
@@ -110,6 +124,19 @@ imported them.
 
 ### Fixed
 
+- Upgrading Firecracker no longer collides with old fixed-name RAM staging
+  files. Both profiles use a shared, verified directory for each pinned binary
+  pair and publish executables without replacing existing files. A retained
+  startup failure demonstrates why passing preflight alone is insufficient.
+- Browser gate receipts bind to exact requested cases and asset hashes;
+  repeated job IDs are refused. Private fixture controls use certificate-verified
+  loopback HTTPS, with shared instance identity bound to the public endpoints
+  and counter responses. Earlier token-routing claims were corrected.
+- Header-only CDP CSP updates did not enforce the added policy, and explicitly
+  empty HTTP/2 response phrases broke navigation. Regression cases preserve
+  exact decoded body bytes, existing policies, and supported status handling.
+- Failed browser termination holds observation until host teardown, including
+  failure-result write errors. The host stops its proxy before terminating the VM.
 - `verify_envelope`, `derive_exit_code` and the legacy `verify_signature` raised
   `TypeError` or `ValueError` on malformed receipts (non-ASCII, non-string or NaN
   fields) instead of reporting them invalid.
@@ -126,15 +153,10 @@ imported them.
   3.11 compatibility fallback invokes `tarfile.extractall` without a filter.
 - Security-relevant proxy startup invariants now raise explicit errors instead of
   disappearing when Python runs with optimization enabled.
-- Coverage omits the workspace virtual environment; the previous configuration
-  could count installed packages under `.venv` as project source.
+- Coverage omits the workspace virtual environment and Git-ignored local tools
+  under `.cindermote`; these could otherwise count as shipped source. The
+  coverage threshold remains 60%.
 - Lint: unused imports and ambiguous names (`ruff check .` is clean).
-
-### Not changed
-
-- Files that are hash-pinned into the guest rootfs were not edited, so the pinned
-  rootfs in `policy/firecracker-assets.lock.json` still applies. See
-  [CONTRIBUTING.md](CONTRIBUTING.md#hash-pinned-guest-sources-read-before-editing).
 
 ## [1.0.0] — 2026-09-23
 

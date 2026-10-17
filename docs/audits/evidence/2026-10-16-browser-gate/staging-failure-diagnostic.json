@@ -1,0 +1,17 @@
+{
+  "diagnosis": "Fixed shared staging paths retained old1.16.1 bytes; runtime rejects trusted RAM asset pool mismatch before jailer or proxy launch. Preflight checked persistent assets but not old shared staging contents.",
+  "expected_asset_sha256": {
+    "firecracker": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+    "jailer": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f"
+  },
+  "failed_gate": "browser-gate-final.json",
+  "job_id": "mf-web-2eb2d41a",
+  "no_vmm_or_proxy_launch_claimed": true,
+  "observed_legacy_ram_asset_sha256": {
+    "firecracker": "2fd0171309af7e24cf8dafc8a6f921c1434c49b5f9349bb996b7ed0a4deb8aa7",
+    "jailer": "1f3a0c1fe86212d0001819bfe0819071c01208b3ccc9398c3b3bc1b84cf21edd"
+  },
+  "receipt_purge_verified": false,
+  "schema_version": "cindermote.browser-staging-failure-diagnostic/v1",
+  "source_commit": "2fde07773ad694737e084b5a409f73a4f4a74caa"
+}

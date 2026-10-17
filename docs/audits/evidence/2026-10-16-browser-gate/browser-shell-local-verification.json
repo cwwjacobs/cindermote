@@ -1,0 +1,451 @@
+{
+  "authentication_scope": "host observer-key holder; no external witness or public HMAC verification",
+  "observer_key_identifier_sha256": "538353475a640e9909782e33992d1ca52e4ebdc08e9132b49db15ff4455620b0",
+  "runs": [
+    {
+      "full_current_gate_verifier_passed": false,
+      "gate_file": "browser-gate-shell1.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 50,
+      "historical_image_bytes_rehashed": false,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "ALLOW",
+          "case": "clean",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-37583770",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "post",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-683540f6",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "ALLOW",
+          "case": "websocket",
+          "case_expectation_met": false,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-21321dae",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "1d0966d5a47575986a84fc13a6452c154da46c4a",
+      "status": "FAIL"
+    },
+    {
+      "full_current_gate_verifier_passed": false,
+      "gate_file": "browser-gate-shell-csp.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 51,
+      "historical_image_bytes_rehashed": false,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "DENY",
+          "case": "clean",
+          "case_expectation_met": false,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-a8d8d873",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": true
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "7a7ce9f7e382420daff61d29293df2444b4426b7",
+      "status": "FAIL"
+    },
+    {
+      "full_current_gate_verifier_passed": false,
+      "gate_file": "browser-gate-shell-csp-http2.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 51,
+      "historical_image_bytes_rehashed": false,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "ALLOW",
+          "case": "clean",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-e6350153",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "post",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-f19081df",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "ALLOW",
+          "case": "websocket",
+          "case_expectation_met": false,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-c17de186",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "1e2a80cb33dd254d1b997bb5c506bec14f7ee943",
+      "status": "FAIL"
+    },
+    {
+      "full_current_gate_verifier_passed": false,
+      "gate_file": "browser-gate-final.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 51,
+      "historical_image_bytes_rehashed": false,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "DENY",
+          "case": "clean",
+          "case_expectation_met": false,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-2eb2d41a",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": false,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": false
+          },
+          "purge_verified": false,
+          "schema_valid": true,
+          "telemetry_incomplete": true
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "2fde07773ad694737e084b5a409f73a4f4a74caa",
+      "status": "FAIL"
+    },
+    {
+      "full_current_gate_verifier_passed": false,
+      "gate_file": "browser-gate-final2.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 51,
+      "historical_image_bytes_rehashed": false,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "ALLOW",
+          "case": "clean",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-36d8395a",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "post",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-e77a104a",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "websocket",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-d85ed52b",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "popup",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-71a52357",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "unauthorized",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-4f37f8f0",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "90e05b065cda6d55494554da34c71b67dbc7651c",
+      "status": "FAIL"
+    },
+    {
+      "full_current_gate_verifier_passed": true,
+      "gate_file": "browser-gate-final3.json",
+      "gate_hmac_verified": true,
+      "git_source_files_verified": 51,
+      "historical_image_bytes_rehashed": true,
+      "ignored_local_source_hashes_verified": [
+        "policy/agent-probe-quarantine.x25519.pub",
+        "policy/golden-snapshot.manifest",
+        "policy/golden-snapshot.tar.gz"
+      ],
+      "jobs": [
+        {
+          "actual_decision": "ALLOW",
+          "case": "clean",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-5d992b85",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "post",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-719798d3",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "websocket",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-c1e5d937",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "popup",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-2f65fd6e",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        },
+        {
+          "actual_decision": "DENY",
+          "case": "unauthorized",
+          "case_expectation_met": true,
+          "evidence_hash_and_reduction_verified": true,
+          "hmac_verified": true,
+          "job_id": "mf-web-24c4858c",
+          "purge_fields": {
+            "cgroup_removed": true,
+            "egress_worker_reaped": true,
+            "network_namespace_removed": true,
+            "processes_reaped": true,
+            "ram_jail_removed": true,
+            "verified_externally": true
+          },
+          "purge_verified": true,
+          "schema_valid": true,
+          "telemetry_incomplete": false
+        }
+      ],
+      "rootfs_build_receipt_hash_and_declared_image_binding_verified": true,
+      "source_commit": "6c9a0916fced21f179b0d1a42195c9f65813ca8f",
+      "status": "PASS"
+    }
+  ],
+  "schema_version": "cindermote.browser-shell-local-verification/v1"
+}

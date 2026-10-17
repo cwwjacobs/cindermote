@@ -1,0 +1,17 @@
+{
+  "after_gate": "browser-gate-final2.json",
+  "authentication_scope": "host observer-key holder; shared fixture counters",
+  "counter_response": {
+    "counts": {
+      "popup": 1,
+      "post": 0,
+      "unauthorized": 0,
+      "websocket": 0
+    },
+    "instance_id": "6375a9dca174d27572121ff60c2742c7",
+    "schema_version": "cindermote.e2e-fixture/v1"
+  },
+  "observer_key_identifier_sha256": "538353475a640e9909782e33992d1ca52e4ebdc08e9132b49db15ff4455620b0",
+  "receipt_signature": "2d18aada7dc6b8e19b1278a3bcd61910ea62c8c8b3a456153b7b13dc66623dba",
+  "schema_version": "cindermote.browser-fixture-counter-snapshot/v1"
+}

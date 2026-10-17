@@ -120,6 +120,12 @@ parser drops irreversibly to the latter. Preflight re-resolves both identities,
 mount ownership/modes, and cgroup delegation and must print `"ready": true`
 before a browser job is admitted.
 
+Executable staging uses a directory identified by the pinned Firecracker and
+jailer hashes under `/run/cindermote/assets/`. Upgrades select a new directory;
+they do not replace old staged executables. A mismatch inside the selected
+directory fails closed. The legacy flat staging files may remain until the
+RAM mount is recreated and are no longer selected by either profile.
+
 ### What “the VM is in RAM” means
 
 The pristine, hash-pinned asset cache may live on disk. For every admitted
@@ -299,7 +305,18 @@ sudo /usr/bin/python3 tests/firecracker/fixture_https_server.py \
 ```
 
 Place the same token in a root-readable `0600` file on the supported KVM host.
-Run the canonical gate directly:
+The default remote-control mode sends that bearer token to both configured
+public fixture endpoints. For a fixture running on the KVM host, use a
+certificate covering `127.0.0.1`, keep its control listener on loopback, and
+expose the synthetic pages through two public HTTPS endpoints. Add
+`--control-origin https://127.0.0.1:8443 --control-ca-file /path/to/loopback-ca.pem`
+to keep the token on certificate-verified loopback HTTPS. Public
+`/fixture-info` contains only identity metadata; the gate checks its source
+hash and random instance ID against authenticated controls. Both origin labels
+share one fixture and are not independent counter witnesses.
+
+Run the canonical gate directly (add the private-control options above when
+using the colocated fixture):
 
 ```bash
 sudo /usr/bin/python3 tests/firecracker/e2e_supported_host.py \
@@ -328,8 +345,10 @@ machine-readable gate result is preserved at
 The gate result binds Git `HEAD` and a deterministic content manifest of the
 entire scoped runtime/test source surface, including dirty and untracked
 files. It separately records the fixture source hash, policy and asset-lock
-hashes, and the cache-relative browser-rootfs and build-receipt hashes. Both
-fixture origins must report the same fixture source hash, and the gate
+hashes, and the cache-relative browser-rootfs and build-receipt hashes. Every
+case is bound to the exact request URL, origins, budgets, and Firecracker,
+jailer, kernel, browser, rootfs, and receipt digests. Both fixture origins must
+report the same fixture source hash and instance identity, and the gate
 recomputes the complete provenance bundle after teardown; any mutation forces
 `FAIL`. The result's HMAC authenticates it only to a holder of this host's
 local observer key. It is explicitly not a third-party signature or externally
@@ -338,9 +357,8 @@ source/assets/rootfs provenance, all five persisted signed case receipts and
 evidence reductions, zero forbidden-action counts, current preflight, and the
 absence of stale jobs. It does not re-contact the fixture.
 
-This checkout's current container cannot execute that gate because KVM, TUN,
-writable cgroups, nested tmpfs device support, swap control, and the required
-Linux 6.18 host are not exposed. A competition submission must not claim the
+Execution requires KVM, TUN, writable cgroups, nested tmpfs device support,
+swap control, and the required Linux 6.18 host. A competition submission must not claim the
 gate passed unless the direct gate exits zero, its newly written artifact
 records `"status": "PASS"`, and a separate `--verify-output` invocation exits
 zero immediately before submission. Reading `"status": "PASS"` alone is not

@@ -1,0 +1,9 @@
+{
+  "counts": {
+    "popup": 0,
+    "post": 0,
+    "unauthorized": 0,
+    "websocket": 0
+  },
+  "schema_version": "cindermote.e2e-fixture/v1"
+}

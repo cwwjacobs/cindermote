@@ -1,0 +1,28 @@
+{
+  "authentication_scope": "Local observer-key holder; no independent witness",
+  "case": {
+    "browser_sha256": "c7d542f451dc3e8612a0e1e5293309fb55b26e82aa2b1f7972664d665a8325fb",
+    "decision": "ALLOW",
+    "evidence_sha256": "03ccd6c91af8337204b0ed424c4292154227eee649d0210584ce398dafb307e7",
+    "finding_ids": [],
+    "firecracker_sha256": "99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5",
+    "jailer_sha256": "65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f",
+    "job_id": "mf-web-2f9b79a1",
+    "kernel_sha256": "c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92",
+    "purge": {
+      "cgroup_removed": true,
+      "egress_worker_reaped": true,
+      "network_namespace_removed": true,
+      "processes_reaped": true,
+      "ram_jail_removed": true,
+      "verified_externally": true
+    },
+    "receipt_sha256": "28d871b26a542bbd0bf85805817f6e8b756a11049a9d08046616ac4c4d64325e",
+    "rootfs_receipt_sha256": "bfe444ecaf9038f95fda49f2686cc0168115be455f8d5dd7b06d0dc2dc00e8a1",
+    "rootfs_sha256": "7e49c47eedc089da8e87c2c7506fd5f3db9655f75904b47afe925a2b349a333d"
+  },
+  "receipt_hmac_schema_evidence_reduction_and_asset_bindings_verified": true,
+  "schema_version": "cindermote.browser-public-smoke-verification/v1",
+  "source_commit": "6c9a0916fced21f179b0d1a42195c9f65813ca8f",
+  "target": "https://example.org/"
+}

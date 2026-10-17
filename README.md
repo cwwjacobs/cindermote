@@ -57,7 +57,7 @@ Policy version: `cindermote-hotcell-v1.3` (`policy/hotcell-policy.json`).
 | Declared registries (seams, capabilities, cues, components) | Checked against the tree by `cindermote kernel-laws` | `tests/test_kernel_laws.py` |
 | Host-native MCP execution (init, `tools/list`, `tools/call`, vertical run) | **Disabled in this baseline**; calls raise `HostNativeExecutionDisabled` | `tests/test_vertical_spine.py` 01–05 |
 | Supported-host KVM agent-probe | On Void `6.18.57_1`, root preflight passed all 24 checks and one jailed run completed with guest, egress, and cleanup witnesses verified. The invalid provider key kept the gate incomplete. | [Validation record](VALIDATION.md), [audit](docs/audits/2026-10-16-security-audit.md), [published evidence](docs/audits/evidence/2026-10-16/README.md) |
-| Browser-profile KVM | A controlled HTTPS page loaded in a jailed Firecracker VM with Chromium's sandbox active, all four evidence streams complete, and purge verified. The five-case gate still fails at its clean case: Chromium made five blocked background requests to unauthorized Google origins, so the signed decision is `DENY`, not `ALLOW`. | [Browser follow-up](docs/audits/2026-10-16-browser-followup.md), [proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md) |
+| Browser-profile KVM | Five controlled HTTPS cases passed on Void `6.18.57_1`: clean `ALLOW`; POST, WebSocket, popup, and unauthorized image-origin `DENY`. All four streams completed, purge verified, and shared fixture counters stayed zero. Exact audited source: `6c9a091`. This is bounded operational proof, with known browser security debt below. | [Browser gate audit](docs/audits/2026-10-16-browser-gate.md), [success and failure evidence](docs/audits/evidence/2026-10-16-browser-gate/README.md) |
 | Live-provider agent `ALLOW` | **Not demonstrated** | The supported-host run intentionally used an invalid provider key. |
 | Legacy namespace profile (`mote/detonate.py`) and Cinder Incident Gate | Deprecated; snapshot startup was repaired and six hostile probes completed with `DENY`, signed receipts, and verified cleanup on the audited host. Incomplete observation fails closed; root runs require real cgroup v2. | [Regression tests](tests/test_incident_gate.py), [audit](docs/audits/2026-10-16-security-audit.md), [deprecation](docs/legacy-deprecation.md) |
 
@@ -114,36 +114,49 @@ portable test summary. The encrypted guest evidence and the host-specific
 archive remain local; public HMAC receipts cannot be independently
 authenticated without the host's private observer key.
 
-The [browser follow-up](docs/audits/2026-10-16-browser-followup.md) retained
-four successive signed failure receipts, including one bound to the exact
-source commit. The final run demonstrates real
-navigation and complete browser, CDP, egress, and VM observation, but the
-controlled-fixture gate remains `FAIL`: blocked Chromium startup requests
-produce an honest `DENY`. The [follow-up proof bundle](docs/audits/evidence/2026-10-16-browser-followup/README.md)
-includes the receipts, evidence, gate results, build receipt, and hashes.
+The [earlier browser follow-up](docs/audits/2026-10-16-browser-followup.md)
+retained four failed startup/observation attempts. The
+[new browser audit](docs/audits/2026-10-16-browser-gate.md) retains five more
+failed gates, including missed WebSocket signals, an upgrade staging failure,
+and a detected popup whose request still reached the fixture. Those failures
+remain published after the repairs.
+
+The final five-case gate passed at source `6c9a091` using Firecracker/jailer
+`1.17.0`, guest Linux `6.1.188`, and signed Debian Chromium headless shell
+`155.0.8059.79-1~deb12u1`. Two fresh builds reproduced both the final image and
+its build receipt. The [proof bundle](docs/audits/evidence/2026-10-16-browser-gate/README.md)
+contains the signed gate/case artifacts, local verification results, build
+receipts, retained failures, test results, and a checksum index. HMAC verification
+remains local to the observer-key holder; this is not external attestation.
 
 Follow the [regression tests](tests/test_incident_gate.py),
 [runner failure tests](tests/test_agent_probe_runner.py),
 [mount-proof tests](tests/firecracker/test_firecracker_runtime.py),
 [CI workflow](.github/workflows/ci.yml), and [validation record](VALIDATION.md).
 Hosted CI checks portable behavior and the root job-image contract; it does
-not establish supported-host KVM execution. The host run covered audited code
-at local commit `0526265`; the published branch carries the same runtime code
-with later documentation and evidence additions. A new release needs its own
-claim boundary.
+not establish supported-host KVM execution. The agent host run covered local commit `0526265`; the final browser gate
+covered `6c9a091`. Later documentation, evidence, or merge commits are not
+themselves fresh host runs. A new release needs its own claim boundary.
 
 ## Known issues and remaining limitations
 
-- **Supported-host proof is bounded.** Root preflight and jailed execution
+- **Browser security debt remains.** The refreshed image uses signed Debian
+  Chromium headless shell `155.0.8059.79-1~deb12u1`, but
+  [Debian lists open advisories fixed upstream in 155.0.8059.84](https://security-tracker.debian.org/tracker/source-package/chromium).
+  It is not cleared for hostile production browsing. The guest kernel is
+  `6.1.188`; comprehensive kernel CVE clearance is also unproven. See the
+  [runtime review](docs/audits/2026-10-16-browser-gate.md#runtime-freshness-and-remaining-security-debt).
+- **Agent supported-host proof is bounded.** Root preflight and jailed execution
   passed on one Void host for local audit commit `0526265`. The public bundle
   contains receipts and hashes, while the private HMAC key and encrypted guest
   evidence stay on that host. A later main commit or release is not itself a
   fresh supported-host run.
-- **Browser-profile gate is failing.** The clean controlled-fixture case loaded
-  in Firecracker with complete observation and verified cleanup, but Chromium
-  attempted five unauthorized background requests. The proxy blocked them and
-  the signed gate decision was `DENY`; the remaining four fixture cases were
-  not run by that gate. This is not a five-case pass.
+- **Browser proof covers five controlled fixtures.** It ends at a frozen load
+  snapshot and does not cover delayed behavior, WebRTC, every native transport,
+  or general detection efficacy. Document fulfillment preserves decoded body
+  bytes, with a 4 MiB/request-budget cap; empty, oversized, or unavailable
+  bodies fail closed. Transport and streaming behavior are changed. `ALLOW`
+  is never a safety verdict. See the [audit limits](docs/audits/2026-10-16-browser-gate.md#limits-of-this-proof).
 - **Live-provider ALLOW is unverified.** No live credential was used in the
   recorded supported-host run. A successful ALLOW outcome is not guaranteed
   by supplying a credential; it must be executed and verified.
@@ -239,10 +252,12 @@ Recorded results and the commits they cover are in [VALIDATION.md](VALIDATION.md
 - `MIGRATION_FROM_MOTEFIELD.md` — Active surface rename record.
 - `NAMING.md` — Product and codebase naming rules.
 - `VALIDATION.md` — Recorded verification runs and status.
-- `docs/audits/2026-10-16-security-audit.md` — Latest defensive audit,
+- `docs/audits/2026-10-16-security-audit.md` — Initial defensive audit,
   remediations, retained failures, and exact Firecracker proof boundaries.
 - `docs/audits/2026-10-16-browser-followup.md` — Controlled-fixture browser
-  follow-up, remaining failed gate, and reproduced image hashes.
+  follow-up with retained failed gates and reproduced image hashes.
+- `docs/audits/2026-10-16-browser-gate.md` — Five-case browser pass, retained
+  failures, runtime refresh, repeatable builds, and remaining security debt.
 - `docs/audits/evidence/2026-10-16/README.md` — Public proof bundle,
   checksums, and limits of third-party verification.
 - `CHANGELOG.md` — What changed, including removals and behavior changes.
