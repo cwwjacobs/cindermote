@@ -1,0 +1,2 @@
+# Preserve original terminal evidence, including carriage-return progress output.
+docs/audits/evidence/2026-10-16-browser-gate/rootfs-*.txt -text -whitespace
