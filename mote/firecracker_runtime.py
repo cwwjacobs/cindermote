@@ -58,8 +58,8 @@ HOST_VETH_PATTERN = re.compile(r"^[0-9]+:\s+mfh([0-9a-f]{8})(?:@[^:]+)?:")
 DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ROOTFS_BUILD_INPUTS = {
     "base_image_digest": "sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
-    "debian_snapshot": "20260716T110000Z",
-    "chromium_package_version": "150.0.7871.124-1~deb12u1",
+    "debian_snapshot": "20261016T120000Z",
+    "chromium_package_version": "155.0.8059.79-1~deb12u1",
     "e2fsprogs_package_version": "1.47.0-2+b2",
     "fakeroot_package_version": "1.31-1.2",
     "platform_tools_url": "https://dl.google.com/android/repository/platform-tools_r33.0.3-linux.zip",

@@ -3,9 +3,9 @@
 FROM docker.io/library/debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG SOURCE_DATE_EPOCH=1784160000
-ARG CHROMIUM_VERSION=150.0.7871.124-1~deb12u1
-ARG DEBIAN_SNAPSHOT=20260716T110000Z
+ARG SOURCE_DATE_EPOCH=1792152000
+ARG CHROMIUM_VERSION=155.0.8059.79-1~deb12u1
+ARG DEBIAN_SNAPSHOT=20261016T120000Z
 # The base-image digest fixes the initial filesystem; the dated Debian
 # snapshots fix every package selected by apt. Release signatures remain the
 # package authority even though the snapshot endpoint is HTTP in the minimal

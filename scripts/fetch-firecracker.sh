@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly VERSION="1.16.1"
+readonly VERSION="1.17.0"
 readonly ARCH="x86_64"
-readonly ARCHIVE_SHA256="382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6"
-readonly FIRECRACKER_SHA256="2fd0171309af7e24cf8dafc8a6f921c1434c49b5f9349bb996b7ed0a4deb8aa7"
-readonly JAILER_SHA256="1f3a0c1fe86212d0001819bfe0819071c01208b3ccc9398c3b3bc1b84cf21edd"
-readonly KERNEL_VERSION="6.1.155"
-readonly KERNEL_SHA256="e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2"
+readonly ARCHIVE_SHA256="06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558"
+readonly FIRECRACKER_SHA256="99ad0f5cd0514a88aad0e9ae8cfdb3cc3b4ab9d190e1194602406c786b5de7a5"
+readonly JAILER_SHA256="65ef226e96f0ceda55ba643f445801ef2cc0ea667ef67cad8ac4f406c9c8434f"
+readonly KERNEL_VERSION="6.1.188"
+readonly KERNEL_SHA256="c16288854c798ded46c45b3ccab4bc85b8041552ab50f899fecbad550a641e92"
 readonly RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases/download/v${VERSION}/firecracker-v${VERSION}-${ARCH}.tgz"
-readonly KERNEL_URL="https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.15/${ARCH}/vmlinux-${KERNEL_VERSION}"
+readonly KERNEL_URL="https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261016-5732b8331e1e-0/${ARCH}/vmlinux-${KERNEL_VERSION}"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CACHE_DIR="${CINDERMOTE_CACHE_DIR:-${PROJECT_DIR}/.cindermote/cache}"

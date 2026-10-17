@@ -88,6 +88,9 @@ POLICY_PATH = "policy/hotcell-policy.json"
 ASSET_LOCK_PATH = "policy/firecracker-assets.lock.json"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40,64}$")
+RUNTIME_ASSET_FIELDS = frozenset({
+    "firecracker_sha256", "jailer_sha256", "kernel_sha256", "browser_sha256",
+})
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -236,6 +239,19 @@ def _git_head(project_dir: Path) -> str:
     return value
 
 
+def _validated_runtime_asset_pins(value: Any) -> dict[str, str]:
+    if (
+        not isinstance(value, dict)
+        or set(value) != RUNTIME_ASSET_FIELDS
+        or any(
+            not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None
+            for digest in value.values()
+        )
+    ):
+        raise AssertionError("runtime asset provenance digests are malformed")
+    return dict(value)
+
+
 def collect_gate_provenance(
     project_dir: Path = PROJECT_DIR,
     *,
@@ -299,8 +315,15 @@ def collect_gate_provenance(
     try:
         declared_schema = build_receipt["schema_version"]
         declared_rootfs_sha256 = build_receipt["rootfs"]["sha256"]
+        runtime_asset_pins = {
+            "firecracker_sha256": asset_lock["firecracker"]["binary_sha256"],
+            "jailer_sha256": asset_lock["firecracker"]["jailer_sha256"],
+            "kernel_sha256": asset_lock["guest_kernel"]["sha256"],
+            "browser_sha256": build_receipt["browser"]["binary_sha256"],
+        }
     except (KeyError, TypeError) as exc:
-        raise AssertionError("browser rootfs build receipt lacks its digest binding") from exc
+        raise AssertionError("asset lock or browser build receipt lacks runtime asset digest binding") from exc
+    runtime_asset_pins = _validated_runtime_asset_pins(runtime_asset_pins)
     if declared_schema != receipt_schema:
         raise AssertionError("browser rootfs build receipt schema differs from the asset lock")
     if (
@@ -322,6 +345,10 @@ def collect_gate_provenance(
         "fixture_sources": fixture_records,
         "policy": policy_record,
         "asset_lock": asset_lock_record,
+        # These expected runtime commitments come from the hash-bound lock
+        # and rootfs build receipt; preflight independently checks installed
+        # assets. Every case must report this same complete asset set.
+        "runtime_asset_sha256": runtime_asset_pins,
         "browser_rootfs": {
             "cache_root": str(cache),
             **rootfs_record,
@@ -343,6 +370,9 @@ def verify_gate_provenance(
 ) -> None:
     """Fail unless checkout and artifact bytes still match a recorded identity."""
 
+    if not isinstance(expected, dict):
+        raise AssertionError("gate provenance must be an object")
+    _validated_runtime_asset_pins(expected.get("runtime_asset_sha256"))
     observed = collect_gate_provenance(project_dir, **options)
     if observed != expected:
         raise AssertionError("gate provenance changed during or after collection")
@@ -606,6 +636,7 @@ def _verify_probe_receipt(
         "receipt_sha256": sha256_file(receipt_path),
         "evidence_sha256": browser["evidence"]["sha256"],
         "firecracker_sha256": browser["runtime"]["firecracker_sha256"],
+        "jailer_sha256": browser["runtime"]["jailer_sha256"],
         "kernel_sha256": browser["runtime"]["kernel_sha256"],
         "rootfs_sha256": browser["runtime"]["rootfs_sha256"],
         "rootfs_receipt_sha256": browser["runtime"]["rootfs_receipt_sha256"],
@@ -618,6 +649,22 @@ def _claim_case_job(job_id: str, seen_job_ids: set[str]) -> None:
     if job_id in seen_job_ids:
         raise AssertionError("competition gate reused a browser job across fixture cases")
     seen_job_ids.add(job_id)
+
+
+def _verify_case_asset_bindings(case: dict[str, Any], provenance: dict[str, Any]) -> None:
+    expected = _validated_runtime_asset_pins(provenance.get("runtime_asset_sha256"))
+    try:
+        expected.update({
+            "rootfs_sha256": provenance["browser_rootfs"]["sha256"],
+            "rootfs_receipt_sha256": provenance["browser_rootfs"]["build_receipt"]["sha256"],
+        })
+    except (KeyError, TypeError) as exc:
+        raise AssertionError("gate rootfs asset provenance is malformed") from exc
+    for name, digest in expected.items():
+        if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
+            raise AssertionError("gate rootfs asset provenance digest is malformed")
+        if case.get(name) != digest:
+            raise AssertionError(f"signed browser case differs from gate-pinned asset provenance: {name}")
 
 
 def run_gate(
@@ -718,15 +765,7 @@ def run_gate(
                 receipt, request, expected_finding, attempt_record=current_attempt
             )
             _claim_case_job(case_receipt["job_id"], seen_job_ids)
-            if (
-                case_receipt["rootfs_sha256"]
-                != provenance_start["browser_rootfs"]["sha256"]
-                or case_receipt["rootfs_receipt_sha256"]
-                != provenance_start["browser_rootfs"]["build_receipt"]["sha256"]
-            ):
-                raise AssertionError(
-                    "signed browser case differs from the gate-pinned rootfs provenance"
-                )
+            _verify_case_asset_bindings(case_receipt, provenance_start)
             case_receipt["case"] = case_name
             summary["cases"].append(case_receipt)
             current_attempt = None
@@ -854,12 +893,7 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
         observed["case"] = case_name
         if observed != recorded:
             raise AssertionError("competition gate case differs from persisted evidence")
-        if (
-            recorded["rootfs_sha256"] != provenance["browser_rootfs"]["sha256"]
-            or recorded["rootfs_receipt_sha256"]
-            != provenance["browser_rootfs"]["build_receipt"]["sha256"]
-        ):
-            raise AssertionError("competition gate case rootfs provenance changed")
+        _verify_case_asset_bindings(observed, provenance)
     expected_counts = {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0}
     if summary.get("fixture_counts") != {
         "primary": expected_counts,

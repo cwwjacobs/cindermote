@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
 import secrets
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -45,6 +47,7 @@ class GateProvenanceTests(unittest.TestCase):
                 {
                     "schema_version": "cindermote.browser-rootfs/v1",
                     "rootfs": {"sha256": rootfs_sha256},
+                    "browser": {"binary_sha256": "f" * 64},
                 },
                 sort_keys=True,
             )
@@ -55,6 +58,8 @@ class GateProvenanceTests(unittest.TestCase):
         (self.project / "policy/firecracker-assets.lock.json").write_text(
             json.dumps(
                 {
+                    "firecracker": {"binary_sha256": "c" * 64, "jailer_sha256": "d" * 64},
+                    "guest_kernel": {"sha256": "e" * 64},
                     "browser_rootfs": {
                         "path": "images/browser-rootfs.ext4",
                         "sha256": rootfs_sha256,
@@ -105,6 +110,12 @@ class GateProvenanceTests(unittest.TestCase):
         )
         self.assertEqual(provenance, self.collect())
         self.assertEqual(provenance["git_head"], "a" * 40)
+        self.assertEqual(provenance["runtime_asset_sha256"], {
+            "firecracker_sha256": "c" * 64,
+            "jailer_sha256": "d" * 64,
+            "kernel_sha256": "e" * 64,
+            "browser_sha256": "f" * 64,
+        })
         self.verify(provenance)
 
         with mock.patch(
@@ -136,6 +147,45 @@ class GateProvenanceTests(unittest.TestCase):
         receipt.write_bytes(receipt.read_bytes() + b" ")
         with self.assertRaisesRegex(AssertionError, "build receipt differs"):
             self.verify(provenance)
+
+    def test_malformed_lock_or_build_receipt_runtime_asset_digest_fails_closed(self) -> None:
+        lock_path = self.project / "policy/firecracker-assets.lock.json"
+        receipt_path = self.cache / "images/browser-rootfs.receipt.json"
+        original_lock = json.loads(lock_path.read_text())
+        original_receipt = json.loads(receipt_path.read_text())
+        fields = (
+            ("firecracker", "binary_sha256"),
+            ("firecracker", "jailer_sha256"),
+            ("guest_kernel", "sha256"),
+            ("browser", "binary_sha256"),
+        )
+        for section, name in fields:
+            for invalid in (None, True, 17, [], {}, "", "a" * 63, "G" * 64):
+                with self.subTest(section=section, name=name, invalid=invalid):
+                    lock = copy.deepcopy(original_lock)
+                    receipt = copy.deepcopy(original_receipt)
+                    target = receipt if section == "browser" else lock
+                    target[section][name] = invalid
+                    receipt_path.write_text(json.dumps(receipt), encoding="ascii")
+                    lock["browser_rootfs"]["build_receipt_sha256"] = hashlib.sha256(
+                        receipt_path.read_bytes()
+                    ).hexdigest()
+                    lock_path.write_text(json.dumps(lock), encoding="ascii")
+                    with self.assertRaisesRegex(AssertionError, "runtime asset.*malformed"):
+                        self.collect()
+
+    def test_offline_provenance_rejects_missing_malformed_or_changed_runtime_pins(self) -> None:
+        expected = self.collect()
+        for invalid in (None, {}, {**expected["runtime_asset_sha256"], "browser_sha256": True}):
+            with self.subTest(invalid=invalid):
+                changed = copy.deepcopy(expected)
+                changed["runtime_asset_sha256"] = invalid
+                with self.assertRaisesRegex(AssertionError, "runtime asset.*malformed"):
+                    self.verify(changed)
+        changed = copy.deepcopy(expected)
+        changed["runtime_asset_sha256"]["firecracker_sha256"] = "0" * 64
+        with self.assertRaisesRegex(AssertionError, "provenance changed"):
+            self.verify(changed)
 
 
 class SupportedHostGateContractTests(unittest.TestCase):
@@ -240,6 +290,16 @@ class GateReceiptBindingTests(unittest.TestCase):
             "events_observed": len(events), "streams": statuses,
         })
         self._persist_receipt()
+        self.provenance = {
+            "fixture_sources": [{"path": gate.FIXTURE_SOURCE_PATHS[0], "sha256": "a" * 64}],
+            "runtime_asset_sha256": {
+                name: browser["runtime"][name] for name in gate.RUNTIME_ASSET_FIELDS
+            },
+            "browser_rootfs": {
+                "sha256": browser["runtime"]["rootfs_sha256"],
+                "build_receipt": {"sha256": browser["runtime"]["rootfs_receipt_sha256"]},
+            },
+        }
         patcher = mock.patch.multiple(
             gate,
             OBSERVER_KEY_PATH=self.key_path,
@@ -273,17 +333,10 @@ class GateReceiptBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "budgets differ"):
             gate._verify_probe_receipt(self.receipt, self.request, None)
 
-    def _run_gate_with_cases(self, cases: tuple, *, counter_instance: str = "c" * 32) -> dict:
+    def _run_gate_with_cases(
+        self, cases: tuple, *, counter_instance: str = "c" * 32, expect_failure: bool = True,
+    ) -> dict:
         fixture_hash = "a" * 64
-        provenance = {
-            "fixture_sources": [{"path": gate.FIXTURE_SOURCE_PATHS[0], "sha256": fixture_hash}],
-            "browser_rootfs": {
-                "sha256": self.receipt["browser_probe"]["runtime"]["rootfs_sha256"],
-                "build_receipt": {
-                    "sha256": self.receipt["browser_probe"]["runtime"]["rootfs_receipt_sha256"],
-                },
-            },
-        }
         fixture_info = {
             "schema_version": "cindermote.e2e-fixture/v1",
             "primary_origin": "https://example.org",
@@ -310,7 +363,7 @@ class GateReceiptBindingTests(unittest.TestCase):
                 gate,
                 CASES=cases,
                 _read_private_token=mock.Mock(return_value="test-token"),
-                collect_gate_provenance=mock.Mock(return_value=provenance),
+                collect_gate_provenance=mock.Mock(return_value=copy.deepcopy(self.provenance)),
                 verify_gate_provenance=mock.Mock(),
                 preflight_firecracker=mock.Mock(return_value=SimpleNamespace(
                     ready=True, to_dict=lambda: {"ready": True},
@@ -318,7 +371,7 @@ class GateReceiptBindingTests(unittest.TestCase):
                 _fixture_json=fixture_json,
                 detonate_browser_probe=mock.Mock(return_value=self.receipt),
             ),
-            self.assertRaises(AssertionError),
+            self.assertRaises(AssertionError) if expect_failure else nullcontext(),
         ):
             run_gate(
                 origin="https://example.org",
@@ -328,8 +381,53 @@ class GateReceiptBindingTests(unittest.TestCase):
             )
         result = json.loads(output.read_text(encoding="utf-8"))
         self.assertTrue(verify_signature(result, self.key))
-        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["status"], "FAIL" if expect_failure else "PASS")
         return result
+
+    def test_live_gate_rejects_validly_signed_cases_using_different_runtime_assets(self) -> None:
+        for name in sorted(gate.RUNTIME_ASSET_FIELDS):
+            with self.subTest(asset=name):
+                original = self.receipt["browser_probe"]["runtime"][name]
+                self.receipt["browser_probe"]["runtime"][name] = "0" * 64
+                self._persist_receipt()
+                self.assertTrue(verify_signature(self.receipt, self.key))
+                result = self._run_gate_with_cases((("clean", "/case/clean", None),))
+                self.assertIn("gate-pinned asset provenance: " + name, result["failure"])
+                self.assertEqual(result["cases"], [])
+                self.assertEqual(result["failed_case"]["job_id"], self.receipt["identity"]["job_id"])
+                self.assertTrue(result["failed_case"]["receipt_artifacts_verified"])
+                self.receipt["browser_probe"]["runtime"][name] = original
+
+    def test_offline_gate_rejects_signed_matching_records_using_different_runtime_assets(self) -> None:
+        cases = (("clean", "/case/clean", None),)
+        original = copy.deepcopy(self.receipt)
+        output = self.root / "gate.json"
+        for name in sorted(gate.RUNTIME_ASSET_FIELDS):
+            with self.subTest(asset=name):
+                self.receipt = copy.deepcopy(original)
+                self._persist_receipt()
+                summary = self._run_gate_with_cases(cases, expect_failure=False)
+                with mock.patch.multiple(
+                    gate,
+                    CASES=cases,
+                    verify_gate_provenance=mock.Mock(),
+                    preflight_firecracker=mock.Mock(return_value=SimpleNamespace(ready=True)),
+                ):
+                    self.assertEqual(gate.verify_gate_result(output), summary)
+                    # Both envelopes and the recorded artifact hashes remain
+                    # internally valid. Only binding to the selected pins can
+                    # reject this older/different signed execution.
+                    self.receipt["browser_probe"]["runtime"][name] = "0" * 64
+                    self._persist_receipt()
+                    recorded = gate._verify_probe_receipt(self.receipt, self.request, None)
+                    recorded["case"] = "clean"
+                    summary["cases"] = [recorded]
+                    summary.pop("receipt_signature")
+                    summary["receipt_signature"] = sign_receipt(summary, self.key)
+                    output.write_text(json.dumps(summary), encoding="utf-8")
+                    self.assertTrue(verify_signature(summary, self.key))
+                    with self.assertRaisesRegex(AssertionError, "gate-pinned asset provenance: " + name):
+                        gate.verify_gate_result(output)
 
     def test_gate_rejects_reusing_one_signed_job_for_two_cases(self) -> None:
         result = self._run_gate_with_cases((
