@@ -999,6 +999,10 @@ def _run_probe(wrapper: dict[str, Any], evidence: Evidence) -> dict[str, Any]:
         # still observes every proxy attempt; none are exempted as startup.
         "/usr/bin/chromium-headless-shell",
         "--headless",
+        # Deny new contents in the browser process before popup navigation.
+        # Page.windowOpen still reports the native attempt; pausing and closing
+        # a child target alone can happen after its first network request.
+        "--block-new-web-contents",
         f"--user-data-dir={profile}",
         "--remote-debugging-address=127.0.0.1",
         "--remote-debugging-port=0",

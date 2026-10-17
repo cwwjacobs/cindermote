@@ -448,6 +448,14 @@ def _local_control_origin(origin: str | None, ca_file: Path | None) -> str | Non
     return f"https://127.0.0.1:{parsed.port or 443}"
 
 
+def _zero_fixture_counts(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"post", "websocket", "popup", "unauthorized"}
+        and all(type(count) is int and count == 0 for count in value.values())
+    )
+
+
 def _verify_fixture_identity(
     primary: str,
     secondary: str,
@@ -776,16 +784,22 @@ def run_gate(
             "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
         }
         fixture_counts: dict[str, dict[str, int]] = {}
+        summary["fixture_counts"] = fixture_counts
+        summary["fixture_counter_responses"] = {}
         for label, fixture_origin in (("primary", primary), ("secondary", secondary)):
             fixture = _fixture_json(
                 local_control or fixture_origin, "/control/counts", token, ca_file=control_ca_file,
             )
+            # Preserve the observed bounded response before any assertion so
+            # signed FAIL records retain the action count and server lifetime
+            # which caused rejection. Labels still share the scope above.
+            summary["fixture_counter_responses"][label] = fixture
+            if isinstance(fixture.get("counts"), dict):
+                fixture_counts[label] = fixture["counts"]
             if fixture.get("instance_id") != fixture_identity["instance_id"]:
                 raise AssertionError("controlled fixture instance changed before counter verification")
-            if fixture != expected_fixture:
+            if fixture != expected_fixture or not _zero_fixture_counts(fixture.get("counts")):
                 raise AssertionError("a forbidden browser action reached the controlled fixture")
-            fixture_counts[label] = fixture["counts"]
-        summary["fixture_counts"] = fixture_counts
         postflight = preflight_firecracker(profile="browser")
         summary["postflight"] = postflight.to_dict()
         if not postflight.ready:
@@ -895,11 +909,23 @@ def verify_gate_result(output_path: Path) -> dict[str, Any]:
             raise AssertionError("competition gate case differs from persisted evidence")
         _verify_case_asset_bindings(observed, provenance)
     expected_counts = {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0}
-    if summary.get("fixture_counts") != {
+    fixture_counts = summary.get("fixture_counts")
+    if fixture_counts != {
         "primary": expected_counts,
         "secondary": expected_counts,
-    }:
+    } or any(not _zero_fixture_counts(counts) for counts in fixture_counts.values()):
         raise AssertionError("competition gate fixture counts are not clean")
+    expected_response = {
+        "schema_version": "cindermote.e2e-fixture/v1",
+        "instance_id": instance_id,
+        "counts": expected_counts,
+    }
+    counter_responses = summary.get("fixture_counter_responses")
+    if counter_responses != {
+        "primary": expected_response,
+        "secondary": expected_response,
+    } or any(not _zero_fixture_counts(response.get("counts")) for response in counter_responses.values()):
+        raise AssertionError("competition gate fixture counter responses are not clean or instance-bound")
     current_preflight = preflight_firecracker(profile="browser")
     if not current_preflight.ready:
         raise AssertionError("competition host no longer passes Firecracker preflight")

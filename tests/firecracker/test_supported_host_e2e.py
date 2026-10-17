@@ -334,7 +334,8 @@ class GateReceiptBindingTests(unittest.TestCase):
             gate._verify_probe_receipt(self.receipt, self.request, None)
 
     def _run_gate_with_cases(
-        self, cases: tuple, *, counter_instance: str = "c" * 32, expect_failure: bool = True,
+        self, cases: tuple, *, counter_instance: str = "c" * 32,
+        counter_counts: dict | None = None, expect_failure: bool = True,
     ) -> dict:
         fixture_hash = "a" * 64
         fixture_info = {
@@ -352,7 +353,9 @@ class GateReceiptBindingTests(unittest.TestCase):
                 return {
                     "schema_version": "cindermote.e2e-fixture/v1",
                     "instance_id": counter_instance,
-                    "counts": {"post": 0, "websocket": 0, "popup": 0, "unauthorized": 0},
+                    "counts": counter_counts if counter_counts is not None else {
+                        "post": 0, "websocket": 0, "popup": 0, "unauthorized": 0,
+                    },
                 }
             return {"reset": True}
 
@@ -456,8 +459,86 @@ class GateReceiptBindingTests(unittest.TestCase):
         result = self._run_gate_with_cases((), counter_instance="d" * 32)
         self.assertIn("fixture instance changed", result["failure"])
         self.assertEqual(result["fixture"]["instance_id"], "c" * 32)
+        self.assertEqual(result["fixture_counter_responses"]["primary"]["instance_id"], "d" * 32)
         self.assertEqual(result["fixture"]["counter_scope"]["model"], "shared-fixture-instance")
         self.assertFalse(result["fixture"]["counter_scope"]["origin_labels_are_independent"])
+
+    def test_nonzero_counter_response_is_preserved_in_signed_failure(self) -> None:
+        observed = {"post": 0, "websocket": 0, "popup": 1, "unauthorized": 0}
+        result = self._run_gate_with_cases(
+            (("clean", "/case/clean", None),), counter_counts=observed,
+        )
+        self.assertIn("forbidden browser action reached", result["failure"])
+        self.assertEqual(len(result["cases"]), 1)
+        self.assertEqual(result["fixture_counts"], {"primary": observed})
+        self.assertEqual(result["fixture_counter_responses"], {"primary": {
+            "schema_version": "cindermote.e2e-fixture/v1",
+            "instance_id": "c" * 32,
+            "counts": observed,
+        }})
+        self.assertEqual(result["fixture"]["counter_scope"]["instance_id"], "c" * 32)
+        self.assertFalse(result["fixture"]["counter_scope"]["origin_labels_are_independent"])
+        mutated = copy.deepcopy(result)
+        mutated["fixture_counter_responses"]["primary"]["counts"]["popup"] = 0
+        self.assertFalse(verify_signature(mutated, self.key))
+
+    def test_offline_gate_rejects_signed_malformed_or_unbound_counter_responses(self) -> None:
+        cases = (("clean", "/case/clean", None),)
+        summary = self._run_gate_with_cases(cases, expect_failure=False)
+        output = self.root / "gate.json"
+        with mock.patch.multiple(
+            gate, CASES=cases, verify_gate_provenance=mock.Mock(),
+            preflight_firecracker=mock.Mock(return_value=SimpleNamespace(ready=True)),
+        ):
+            self.assertEqual(gate.verify_gate_result(output), summary)
+            mutations = []
+            for field, value in (
+                ("instance_id", "d" * 32), ("schema_version", "other/v1"),
+                ("extra", "unexpected"),
+            ):
+                changed = copy.deepcopy(summary)
+                changed["fixture_counter_responses"]["primary"][field] = value
+                mutations.append(changed)
+            for value in (1, False, 0.0):
+                changed = copy.deepcopy(summary)
+                changed["fixture_counter_responses"]["primary"]["counts"]["popup"] = value
+                mutations.append(changed)
+            for label in ("primary", "secondary"):
+                changed = copy.deepcopy(summary)
+                del changed["fixture_counter_responses"][label]
+                mutations.append(changed)
+            changed = copy.deepcopy(summary)
+            del changed["fixture_counter_responses"]
+            mutations.append(changed)
+            for index, changed in enumerate(mutations):
+                with self.subTest(mutation=index):
+                    changed.pop("receipt_signature")
+                    changed["receipt_signature"] = sign_receipt(changed, self.key)
+                    output.write_text(json.dumps(changed), encoding="utf-8")
+                    self.assertTrue(verify_signature(changed, self.key))
+                    with self.assertRaisesRegex(AssertionError, "counter responses are not clean or instance-bound"):
+                        gate.verify_gate_result(output)
+
+    def test_offline_gate_rejects_consistently_signed_noninteger_zero_counts(self) -> None:
+        cases = (("clean", "/case/clean", None),)
+        summary = self._run_gate_with_cases(cases, expect_failure=False)
+        output = self.root / "gate.json"
+        with mock.patch.multiple(
+            gate, CASES=cases, verify_gate_provenance=mock.Mock(),
+            preflight_firecracker=mock.Mock(return_value=SimpleNamespace(ready=True)),
+        ):
+            for value in (False, 0.0):
+                with self.subTest(value=value):
+                    changed = copy.deepcopy(summary)
+                    for label in ("primary", "secondary"):
+                        changed["fixture_counts"][label]["popup"] = value
+                        changed["fixture_counter_responses"][label]["counts"]["popup"] = value
+                    changed.pop("receipt_signature")
+                    changed["receipt_signature"] = sign_receipt(changed, self.key)
+                    output.write_text(json.dumps(changed), encoding="utf-8")
+                    self.assertTrue(verify_signature(changed, self.key))
+                    with self.assertRaisesRegex(AssertionError, "fixture counts are not clean"):
+                        gate.verify_gate_result(output)
 
 
 @unittest.skipUnless(
